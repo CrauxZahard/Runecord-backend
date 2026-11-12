@@ -103,11 +103,40 @@ GET    /api/v10/gateway/bot
 Errors use `{code, message}` with Discord codes (`10003 Unknown Channel`, `10008 Unknown Message`,
 `50001 Missing Access`, `50035 Invalid Form Body`).
 
-The gateway URL still speaks Runecord's native `{op, d}` envelope. Discord gateway opcodes,
-intents and RESUME are the Phase 2 item.
+The gateway URL still speaks Runecord's native `{op, d}` envelope at `/gateway`. Discord
+opcodes live at `/gateway/v10`.
+
+### Gateway v10
+
+`ws://127.0.0.1:47800/gateway/v10` implements the Discord handshake:
+
+| Op | Direction | Payload |
+|---|---|---|
+| `10` HELLO | server | `{heartbeat_interval: 41250}` |
+| `2` IDENTIFY | client | `{token: "Bot rcbot.…", intents}` |
+| `1` HEARTBEAT | client | sequence number or `null` → `11 HEARTBEAT_ACK` |
+| `6` RESUME | client | `{token, session_id, seq}` → replay + `RESUMED` |
+| `0` DISPATCH | server | `{t, s, d}` events |
+| `9` INVALID_SESSION | server | `false` |
+
+Intents: `GUILDS`, `GUILD_MEMBERS`, `GUILD_PRESENCES`, `GUILD_MESSAGES`,
+`DIRECT_MESSAGES`, `MESSAGE_CONTENT` (omit `intents` to receive all).
+Sessions live in memory for 5 minutes with a 1024-event replay buffer; a central pump
+buffers events even while the socket is closed. Event payloads use the same
+Discord shapes as `/api/v10`.
+
+Probe it with:
+
+```bat
+node scripts\gw_probe.mjs <bot-token> 100 211
+```
+
+It checks HELLO, READY, heartbeat ACK, a live dispatch, and a resume that replays a
+message sent while the socket was offline.
 
 ## Phase plan
 
-1. Repo split, migrations, Store boundary, reseed. **(this commit)**
-2. Postgres adapter, gateway RESUME + sequence numbers, full handler migration.
-3. Postgres `LISTEN/NOTIFY` fan-out, Docker Compose topology (Postgres + two replicas + proxy), client disk/media caches.
+1. Repo split, migrations, Store boundary, reseed. ✅
+2. **Phase A (done):** Discord `/gateway/v10` with HELLO/IDENTIFY/READY/HEARTBEAT/RESUME, intents, replay buffer, bot presence.
+3. **Phase B:** local applications + install links, webhooks, slash commands, audit log, CDN.
+4. **Phase C:** custom emoji/stickers, thread/forum UI, bots settings UI, voice signaling + voice panel, multiline composer.

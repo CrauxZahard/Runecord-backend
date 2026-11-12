@@ -172,6 +172,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/friends/{id}/block", post(friend_block))
         .route("/api/dms/{id}", post(open_dm))
         .route("/gateway", get(gateway))
+        .route("/gateway/v10", get(crate::gateway_v10::handler))
         .with_state(state)
 }
 

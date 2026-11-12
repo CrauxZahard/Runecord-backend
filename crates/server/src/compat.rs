@@ -84,13 +84,13 @@ fn uid(id: Id) -> String {
     id.to_string()
 }
 
-fn iso(ts: i64) -> String {
+pub(crate) fn iso(ts: i64) -> String {
     chrono::DateTime::from_timestamp_millis(ts)
         .map(|d| d.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string())
         .unwrap_or_default()
 }
 
-fn user_json(u: &User) -> Value {
+pub(crate) fn user_json(u: &User) -> Value {
     json!({
         "id": uid(u.id),
         "username": u.username,
@@ -110,7 +110,7 @@ fn user_json(u: &User) -> Value {
     })
 }
 
-fn guild_json(conn: &rusqlite::Connection, g: &Guild, me: Id) -> Value {
+pub(crate) fn guild_json(conn: &rusqlite::Connection, g: &Guild, me: Id) -> Value {
     json!({
         "id": uid(g.id),
         "name": g.name,
@@ -137,7 +137,7 @@ fn channel_type(kind: ChannelKind) -> u32 {
     }
 }
 
-fn channel_json(c: &Channel) -> Value {
+pub(crate) fn channel_json(c: &Channel) -> Value {
     json!({
         "id": uid(c.id),
         "type": channel_type(c.kind),
@@ -165,7 +165,7 @@ fn attachment_json(a: &Attachment) -> Value {
     })
 }
 
-fn message_json(conn: &rusqlite::Connection, m: &Message) -> Value {
+pub(crate) fn message_json(conn: &rusqlite::Connection, m: &Message) -> Value {
     let author = store::user_by_id(conn, m.author_id).unwrap_or_default();
     let guild_id = store::channel_by_id(conn, m.channel_id).and_then(|c| c.guild_id);
     json!({
@@ -658,5 +658,5 @@ async fn remove_member_role(
 }
 
 async fn gateway(State(state): State<Arc<AppState>>) -> Json<Value> {
-    Json(json!({ "url": format!("ws://127.0.0.1:{}/gateway", state.port) }))
+    Json(json!({ "url": format!("ws://127.0.0.1:{}/gateway/v10", state.port) }))
 }

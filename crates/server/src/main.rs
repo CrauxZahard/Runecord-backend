@@ -2,6 +2,7 @@
 
 mod api;
 mod compat;
+mod gateway_v10;
 mod ratelimit;
 mod store;
 
@@ -18,6 +19,7 @@ pub struct AppState {
     pub data_dir: PathBuf,
     pub limits: ratelimit::RateLimiter,
     pub port: u16,
+    pub v10: gateway_v10::Sessions,
 }
 
 #[tokio::main]
@@ -67,7 +69,10 @@ async fn main() {
         data_dir: data.clone(),
         limits: ratelimit::RateLimiter::new(),
         port,
+        v10: gateway_v10::Sessions::new(),
     });
+
+    gateway_v10::spawn_pump(state.clone());
 
     let app = api::router(state.clone())
         .nest("/api/v10", compat::router(state.clone()))
