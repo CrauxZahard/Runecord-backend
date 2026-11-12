@@ -401,9 +401,252 @@ pub fn unread_for(conn: &Connection, channel_id: Id, me: Id) -> u32 {
     .unwrap_or(0) as u32
 }
 
+pub fn guild_member(conn: &Connection, guild_id: Id, user_id: Id) -> bool {
+    conn.query_row(
+        "SELECT 1 FROM guild_members WHERE guild_id=?1 AND user_id=?2",
+        params![guild_id, user_id],
+        |_| Ok(()),
+    )
+    .optional()
+    .ok()
+    .flatten()
+    .is_some()
+}
+
+pub fn guild_member_detail(conn: &Connection, guild_id: Id, user_id: Id) -> Option<Member> {
+    let mut member = conn
+        .query_row(
+            "SELECT u.*, gm.nickname, gm.joined_at FROM guild_members gm JOIN users u ON u.id=gm.user_id WHERE gm.guild_id=?1 AND gm.user_id=?2",
+            params![guild_id, user_id],
+            |r| {
+                Ok(Member {
+                    guild_id,
+                    user: user_from_row(r)?,
+                    nickname: r.get("nickname")?,
+                    roles: Vec::new(),
+                    joined_at: r.get("joined_at")?,
+                })
+            },
+        )
+        .optional()
+        .ok()
+        .flatten()?;
+    member.roles = member_role_ids(conn, guild_id, user_id);
+    Some(member)
+}
+
+pub fn users_related(conn: &Connection, a: Id, b: Id) -> bool {
+    a == b
+        || conn
+            .query_row(
+                "SELECT 1 FROM guild_members x JOIN guild_members y ON x.guild_id=y.guild_id WHERE x.user_id=?1 AND y.user_id=?2 LIMIT 1",
+                params![a, b],
+                |_| Ok(()),
+            )
+            .optional()
+            .ok()
+            .flatten()
+            .is_some()
+        || conn
+            .query_row(
+                "SELECT 1 FROM relationships WHERE (user_id=?1 AND other_id=?2) OR (user_id=?2 AND other_id=?1) LIMIT 1",
+                params![a, b],
+                |_| Ok(()),
+            )
+            .optional()
+            .ok()
+            .flatten()
+            .is_some()
+}
+
+pub fn guild_summary(conn: &Connection, guild_id: Id, me: Id) -> Option<GuildSummary> {
+    guild_summary_with_unread(conn, guild_id, me).map(|(summary, _)| summary)
+}
+
+pub fn guild_summary_with_unread(conn: &Connection, guild_id: Id, me: Id) -> Option<(GuildSummary, BTreeMap<Id, u32>)> {
+    let mut summary = conn
+        .query_row(
+            "SELECT id, name, icon_color, owner_id, description, created_at, tag FROM guilds WHERE id=?1",
+            params![guild_id],
+            |r| {
+                Ok(GuildSummary {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    icon_color: r.get::<_, i64>(2)? as u32,
+                    owner_id: r.get(3)?,
+                    description: r.get(4)?,
+                    created_at: r.get(5)?,
+                    tag: r.get(6)?,
+                    ..GuildSummary::default()
+                })
+            },
+        )
+        .optional()
+        .ok()
+        .flatten()?;
+    summary.permissions = base_permissions(conn, guild_id, me);
+    summary.member_count = conn
+        .query_row("SELECT COUNT(*) FROM guild_members WHERE guild_id=?1", params![guild_id], |r| r.get::<_, i64>(0))
+        .unwrap_or(0) as u32;
+    let unread = guild_unread_channels(conn, guild_id, me);
+    summary.unread_count = unread.values().copied().sum();
+    summary.mention_count = 0;
+    Some((summary, unread))
+}
+
+fn guild_unread_channels(conn: &Connection, guild_id: Id, me: Id) -> BTreeMap<Id, u32> {
+    let mut out = BTreeMap::new();
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT id FROM channels WHERE guild_id=?1 AND kind IN ('text','announcement','forum','thread')",
+    ) {
+        if let Ok(rows) = stmt.query_map(params![guild_id], |r| r.get::<_, Id>(0)) {
+            for channel in rows.flatten() {
+                if can_view(conn, channel, me) {
+                    let count = unread_for(conn, channel, me);
+                    if count > 0 {
+                        out.insert(channel, count);
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+pub fn guild_detail(conn: &Connection, guild_id: Id, me: Id) -> Option<GuildDetail> {
+    let guild = guild_summary(conn, guild_id, me)?;
+    let mut channels = Vec::new();
+    if let Ok(mut stmt) = conn.prepare("SELECT * FROM channels WHERE guild_id=?1 ORDER BY position, id") {
+        if let Ok(rows) = stmt.query_map(params![guild_id], channel_from_row) {
+            channels.extend(rows.flatten());
+        }
+    }
+    let mut overwrite_list = Vec::new();
+    channels.retain(|channel| channel.kind == ChannelKind::Category || can_view(conn, channel.id, me));
+    for channel in &channels {
+        overwrite_list.push(ChannelOverwrites { channel_id: channel.id, overwrites: overwrites(conn, channel.id) });
+    }
+    for channel in &mut channels {
+        channel.my_permissions = channel_permissions(conn, channel.id, me);
+    }
+    let roles = guild_roles(conn, guild_id);
+    let permissions = guild.permissions;
+    Some(GuildDetail { guild, channels, roles, overwrites: overwrite_list, permissions })
+}
+
+fn member_role_map(conn: &Connection, guild_id: Id) -> HashMap<Id, Vec<Id>> {
+    let mut out: HashMap<Id, Vec<Id>> = HashMap::new();
+    if let Ok(mut stmt) = conn.prepare("SELECT user_id, role_id FROM member_roles WHERE guild_id=?1") {
+        if let Ok(rows) = stmt.query_map(params![guild_id], |r| Ok((r.get::<_, Id>(0)?, r.get::<_, Id>(1)?))) {
+            for (user_id, role_id) in rows.flatten() {
+                out.entry(user_id).or_default().push(role_id);
+            }
+        }
+    }
+    out
+}
+
+fn everyone_can_view(conn: &Connection, guild_id: Id) -> bool {
+    conn.query_row(
+        "SELECT permissions FROM roles WHERE guild_id=?1 AND name='@everyone'",
+        params![guild_id],
+        |r| r.get::<_, i64>(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+    .map(|bits| has(bits as u64, perm::VIEW_CHANNEL))
+    .unwrap_or(false)
+}
+
+fn member_count(conn: &Connection, guild_id: Id, like: &str, role: Id, status: &str) -> u32 {
+    let sql = "SELECT COUNT(*) FROM guild_members gm JOIN users u ON u.id=gm.user_id
+        WHERE gm.guild_id=?1
+          AND (?2='' OR u.username LIKE ?2 OR u.display_name LIKE ?2 OR gm.nickname LIKE ?2)
+          AND (?3=0 OR EXISTS(SELECT 1 FROM member_roles mr WHERE mr.guild_id=gm.guild_id AND mr.user_id=gm.user_id AND mr.role_id=?3))
+          AND (?4='all' OR (?4='online' AND u.status<>'offline') OR (?4<>'all' AND ?4<>'online' AND u.status=?4))";
+    conn.query_row(sql, params![guild_id, like, role, status], |r| r.get::<_, i64>(0)).unwrap_or(0) as u32
+}
+
+pub fn members_page(
+    conn: &Connection,
+    guild_id: Id,
+    me: Id,
+    offset: u32,
+    limit: u32,
+    query: &str,
+    role: Id,
+    status: &str,
+) -> Option<MemberPage> {
+    let summary = guild_summary(conn, guild_id, me)?;
+    let limit = limit.clamp(1, 100);
+    let like = if query.trim().is_empty() { String::new() } else { format!("%{}%", query.trim()) };
+    let status = match status {
+        "online" | "offline" | "idle" | "dnd" => status,
+        _ => "all",
+    };
+    let all_visible = everyone_can_view(conn, guild_id) || summary.owner_id == me;
+
+    let mut members = Vec::new();
+    let mut raw_count = 0u32;
+    let sql = "SELECT u.*, gm.nickname, gm.joined_at FROM guild_members gm JOIN users u ON u.id=gm.user_id
+        WHERE gm.guild_id=?1
+          AND (?2='' OR u.username LIKE ?2 OR u.display_name LIKE ?2 OR gm.nickname LIKE ?2)
+          AND (?3=0 OR EXISTS(SELECT 1 FROM member_roles mr WHERE mr.guild_id=gm.guild_id AND mr.user_id=gm.user_id AND mr.role_id=?3))
+          AND (?4='all' OR (?4='online' AND u.status<>'offline') OR (?4<>'all' AND ?4<>'online' AND u.status=?4))
+        ORDER BY (u.status<>'offline') DESC, gm.joined_at ASC, u.id ASC
+        LIMIT ?5 OFFSET ?6";
+    if let Ok(mut stmt) = conn.prepare(sql) {
+        if let Ok(rows) = stmt.query_map(params![guild_id, like, role, status, limit, offset], |r| {
+            Ok(Member {
+                guild_id,
+                user: user_from_row(r)?,
+                nickname: r.get("nickname")?,
+                roles: Vec::new(),
+                joined_at: r.get("joined_at")?,
+            })
+        }) {
+            for member in rows.flatten() {
+                raw_count += 1;
+                members.push(member);
+            }
+        }
+    }
+    let roles = member_role_map(conn, guild_id);
+    for member in &mut members {
+        member.roles = roles.get(&member.user.id).cloned().unwrap_or_default();
+    }
+    if !all_visible {
+        members.retain(|member| base_permissions(conn, guild_id, member.user.id) & perm::VIEW_CHANNEL != 0);
+    }
+
+    let total = if all_visible {
+        member_count(conn, guild_id, &like, role, status)
+    } else {
+        // Rare path: the @everyone role cannot view members, so count the
+        // filtered set instead of returning a misleading total.
+        let mut matched = 0u32;
+        if let Ok(mut stmt) = conn.prepare(sql) {
+            if let Ok(rows) = stmt.query_map(params![guild_id, like, role, status, u32::MAX, 0], |r| {
+                Ok(user_from_row(r)?.id)
+            }) {
+                for user in rows.flatten() {
+                    if base_permissions(conn, guild_id, user) & perm::VIEW_CHANNEL != 0 {
+                        matched += 1;
+                    }
+                }
+            }
+        }
+        matched
+    };
+
+    let presences = members.iter().map(|member| (member.user.id, member.user.status)).collect();
+    let next_offset = if raw_count >= limit { Some(offset.saturating_add(raw_count)) } else { None };
+    Some(MemberPage { members, total, next_offset, presences })
+}
+
 pub fn bootstrap(conn: &Connection, me: Id) -> Bootstrap {
     let Some(user) = user_by_id(conn, me) else { return Bootstrap::default() };
-    let mut guilds = Vec::new();
     let mut users: HashMap<Id, User> = HashMap::new();
     users.insert(user.id, user.clone());
 
@@ -417,80 +660,15 @@ pub fn bootstrap(conn: &Connection, me: Id) -> Bootstrap {
         out
     };
 
-    for gid in &guild_ids {
-        let Ok(guild_row) = conn.query_row("SELECT * FROM guilds WHERE id=?1", params![gid], |r| {
-            Ok((r.get::<_, Id>("id")?, r.get::<_, String>("name")?, r.get::<_, i64>("icon_color")? as u32, r.get::<_, Id>("owner_id")?, r.get::<_, String>("description")?, r.get::<_, i64>("created_at")?, r.get::<_, String>("tag")?))
-        }) else {
-            continue;
-        };
-        let mut channels: Vec<Channel> = Vec::new();
-        if let Ok(mut stmt) = conn.prepare("SELECT * FROM channels WHERE guild_id=?1 ORDER BY position, id") {
-            if let Ok(rows) = stmt.query_map(params![gid], channel_from_row) {
-                channels.extend(rows.flatten().filter(|c| {
-                    c.kind != ChannelKind::Thread || true
-                }));
-            }
+    let mut unread = BTreeMap::new();
+    let mut summaries = Vec::with_capacity(guild_ids.len());
+    for guild in &guild_ids {
+        if let Some((summary, map)) = guild_summary_with_unread(conn, *guild, me) {
+            summaries.push(summary);
+            unread.extend(map);
         }
-        let mut overwrite_list = Vec::new();
-        for ch in &channels {
-            overwrite_list.push(ChannelOverwrites { channel_id: ch.id, overwrites: overwrites(conn, ch.id) });
-        }
-        let permissions = base_permissions(conn, *gid, me);
-        channels.retain(|c| c.kind == ChannelKind::Category || can_view(conn, c.id, me));
-        for ch in &mut channels {
-            ch.my_permissions = channel_permissions(conn, ch.id, me);
-        }
-        let roles = {
-            let mut out = Vec::new();
-            if let Ok(mut stmt) = conn.prepare("SELECT * FROM roles WHERE guild_id=?1 ORDER BY position DESC") {
-                if let Ok(rows) = stmt.query_map(params![gid], role_from_row) {
-                    out.extend(rows.flatten());
-                }
-            }
-            out
-        };
-        let mut members = {
-            let mut out = Vec::new();
-            if let Ok(mut stmt) = conn.prepare(
-                "SELECT u.*, gm.nickname, gm.joined_at FROM guild_members gm JOIN users u ON u.id=gm.user_id WHERE gm.guild_id=?1 ORDER BY gm.joined_at",
-            ) {
-                if let Ok(rows) = stmt.query_map(params![gid], |r| {
-                    let user = user_from_row(r)?;
-                    Ok(Member {
-                        guild_id: *gid,
-                        user,
-                        nickname: r.get("nickname")?,
-                        roles: Vec::new(),
-                        joined_at: r.get("joined_at")?,
-                    })
-                }) {
-                    out.extend(rows.flatten());
-                }
-                for m in out.iter_mut() {
-                    m.roles = member_role_ids(conn, *gid, m.user.id);
-                    users.insert(m.user.id, m.user.clone());
-                }
-            }
-            out
-        };
-        members.retain(|m| m.user.id == me || has(base_permissions(conn, *gid, m.user.id), perm::VIEW_CHANNEL));
-        let member_count = members.len() as u32;
-        guilds.push(Guild {
-            id: guild_row.0,
-            name: guild_row.1,
-            icon_color: guild_row.2,
-            owner_id: guild_row.3,
-            description: guild_row.4,
-            member_count,
-            created_at: guild_row.5,
-            tag: guild_row.6,
-            permissions,
-            channels,
-            roles,
-            members,
-            overwrites: overwrite_list,
-        });
     }
+    let guilds = summaries;
 
     let mut dms = Vec::new();
     {
@@ -542,17 +720,6 @@ pub fn bootstrap(conn: &Connection, me: Id) -> Bootstrap {
         }
     }
 
-    let mut unread = BTreeMap::new();
-    for guild in &guilds {
-        for ch in &guild.channels {
-            if ch.kind.is_textual() {
-                let n = unread_for(conn, ch.id, me);
-                if n > 0 {
-                    unread.insert(ch.id, n);
-                }
-            }
-        }
-    }
     for dm in &dms {
         let n = unread_for(conn, dm.channel.id, me);
         if n > 0 {
@@ -1326,4 +1493,70 @@ pub fn bot_scopes(conn: &Connection, bot: Id) -> Vec<String> {
         .flatten()
         .map(|s| s.split_whitespace().map(str::to_string).collect())
         .unwrap_or_else(|| vec!["bot".to_string()])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn member_pages_do_not_load_every_member() {
+        let conn = Connection::open_in_memory().expect("memory db");
+        migrate(&conn).expect("migrate");
+        conn.execute(
+            "INSERT INTO users(id, username, display_name, pass_hash, created_at) VALUES(1,'owner','Owner','x',1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO guilds(id, name, icon_color, owner_id, description, created_at, everyone_role_id) VALUES(1,'Large',0,1,'',1,1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO roles(id, guild_id, name, color, permissions, position, hoist, mentionable) VALUES(1,1,'@everyone',0,?1,0,0,1)",
+            params![perm::EVERYONE as i64],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(1,1,'',1)",
+            [],
+        )
+        .unwrap();
+        let tx = conn.unchecked_transaction().unwrap();
+        for id in 2..=10_001i64 {
+            tx.execute(
+                "INSERT INTO users(id, username, display_name, pass_hash, created_at) VALUES(?1,?2,?3,'x',1)",
+                params![id, format!("user{id}"), format!("User {id}")],
+            )
+            .unwrap();
+            tx.execute(
+                "INSERT INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(1,?1,'',?1)",
+                params![id],
+            )
+            .unwrap();
+        }
+        tx.commit().unwrap();
+
+        let started = std::time::Instant::now();
+        let page = members_page(&conn, 1, 1, 0, 100, "", 0, "all").expect("page");
+        let elapsed = started.elapsed();
+        assert_eq!(page.members.len(), 100);
+        assert_eq!(page.total, 10_001);
+        assert_eq!(page.next_offset, Some(100));
+        assert!(elapsed.as_millis() < 250, "page took {elapsed:?}");
+
+        let searched = members_page(&conn, 1, 1, 0, 50, "User 9999", 0, "all").expect("search");
+        assert_eq!(searched.members.len(), 1);
+
+        let summary = guild_summary(&conn, 1, 1).expect("summary");
+        assert_eq!(summary.member_count, 10_001);
+        let bootstrap = bootstrap(&conn, 1);
+        assert_eq!(bootstrap.guilds.len(), 1);
+        assert_eq!(bootstrap.guilds[0].member_count, 10_001);
+        assert!(bootstrap.users.len() <= 2);
+        let encoded = serde_json::to_vec(&bootstrap).expect("bootstrap json");
+        println!("large_bootstrap_bytes={} page_elapsed={:?}", encoded.len(), elapsed);
+        assert!(encoded.len() < 200_000, "bootstrap payload too large: {}", encoded.len());
+    }
 }

@@ -148,18 +148,21 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/logout", post(logout))
         .route("/api/bootstrap", get(bootstrap))
         .route("/api/me", patch(update_me))
+        .route("/api/users/{id}", get(get_user))
+        .route("/api/users/batch", post(get_users_batch))
         .route("/api/read", post(update_read))
         .route("/api/bots", get(list_bots).post(create_bot_account))
         .route("/api/bots/{id}", delete(delete_bot_account))
         .route("/api/guilds", post(create_guild))
-        .route("/api/guilds/{id}", patch(update_guild).delete(delete_guild))
+        .route("/api/guilds/{id}", get(guild_info).patch(update_guild).delete(delete_guild))
         .route("/api/guilds/{id}/channels", post(create_channel))
+        .route("/api/guilds/{id}/members", get(list_guild_members))
+        .route("/api/guilds/{id}/members/{user_id}", get(get_guild_member).patch(update_member))
         .route("/api/guilds/{id}/roles", get(list_roles).post(create_role))
         .route("/api/guilds/{id}/permissions", get(my_permissions))
         .route("/api/channels/{id}/permissions", get(channel_overwrites))
         .route("/api/channels/{id}/permissions/{target}", put(set_channel_overwrite).delete(clear_channel_overwrite))
         .route("/api/guilds/{id}/roles/{role_id}", patch(update_role).delete(delete_role))
-        .route("/api/guilds/{id}/members/{user_id}", patch(update_member))
         .route("/api/guilds/{id}/invites", post(create_invite))
         .route("/api/invites/{code}", get(invite_info))
         .route("/api/invites/{code}/join", post(join_invite))
@@ -251,6 +254,111 @@ async fn bootstrap(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Re
         .cloned()
         .collect();
     Ok(Json(out))
+}
+
+async fn get_user(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(user): Path<Id>) -> Result<Json<User>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    if !store::users_related(&conn, me, user) {
+        return Err(forbidden());
+    }
+    store::user_by_id(&conn, user).map(Json).ok_or_else(not_found)
+}
+
+#[derive(Deserialize)]
+struct UserIds {
+    #[serde(default)]
+    ids: Vec<Id>,
+}
+
+async fn get_users_batch(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(body): Json<UserIds>,
+) -> Result<Json<Vec<User>>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    let mut out = Vec::new();
+    for user in body.ids.into_iter().take(100) {
+        if store::users_related(&conn, me, user) {
+            if let Some(user) = store::user_by_id(&conn, user) {
+                out.push(user);
+            }
+        }
+    }
+    Ok(Json(out))
+}
+
+async fn guild_info(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(guild): Path<Id>) -> Result<Json<GuildDetail>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    if !store::guild_member(&conn, guild, me) {
+        return Err(not_found());
+    }
+    let detail = store::guild_detail(&conn, guild, me).ok_or_else(not_found)?;
+    if !has(detail.permissions, perm::VIEW_CHANNEL) {
+        return Err(forbidden());
+    }
+    Ok(Json(detail))
+}
+
+#[derive(Deserialize)]
+struct MembersQuery {
+    #[serde(default)]
+    offset: Option<u32>,
+    #[serde(default)]
+    limit: Option<u32>,
+    #[serde(default)]
+    q: Option<String>,
+    #[serde(default)]
+    role_id: Option<Id>,
+    #[serde(default)]
+    status: Option<String>,
+}
+
+async fn list_guild_members(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild): Path<Id>,
+    Query(query): Query<MembersQuery>,
+) -> Result<Json<MemberPage>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    if !store::guild_member(&conn, guild, me) {
+        return Err(not_found());
+    }
+    if !has(store::base_permissions(&conn, guild, me), perm::VIEW_CHANNEL) {
+        return Err(forbidden());
+    }
+    let page = store::members_page(
+        &conn,
+        guild,
+        me,
+        query.offset.unwrap_or(0),
+        query.limit.unwrap_or(100),
+        query.q.as_deref().unwrap_or(""),
+        query.role_id.unwrap_or(0),
+        query.status.as_deref().unwrap_or("all"),
+    )
+    .ok_or_else(not_found)?;
+    Ok(Json(page))
+}
+
+async fn get_guild_member(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path((guild, user)): Path<(Id, Id)>,
+) -> Result<Json<Member>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    if !store::guild_member(&conn, guild, me) {
+        return Err(not_found());
+    }
+    if !has(store::base_permissions(&conn, guild, me), perm::VIEW_CHANNEL) {
+        return Err(forbidden());
+    }
+    let member = store::guild_member_detail(&conn, guild, user).ok_or_else(not_found)?;
+    Ok(Json(member))
 }
 
 #[derive(Deserialize)]
@@ -1123,8 +1231,16 @@ async fn join_invite(State(state): State<Arc<AppState>>, headers: HeaderMap, Pat
     conn.execute("INSERT OR IGNORE INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(?1,?2,'',?3)", params![guild, me, now_ms()]).ok();
     conn.execute("UPDATE invites SET uses=uses+1 WHERE code=?1", params![code]).ok();
     let out = Guild { id: guild, ..Guild::default() };
+    let count = conn
+        .query_row("SELECT COUNT(*) FROM guild_members WHERE guild_id=?1", params![guild], |r| r.get::<_, i64>(0))
+        .unwrap_or(0) as u32;
+    let member = store::guild_member_detail(&conn, guild, me);
     drop(conn);
     let _ = state.tx.send(GatewayEvent::GuildCreate(Box::new(out.clone())));
+    let _ = state.tx.send(GatewayEvent::MemberCountUpdate { guild_id: guild, count });
+    if let Some(member) = member {
+        let _ = state.tx.send(GatewayEvent::MemberUpdate(Box::new(member)));
+    }
     Ok(Json(out))
 }
 
@@ -1135,6 +1251,56 @@ async fn join_invite(State(state): State<Arc<AppState>>, headers: HeaderMap, Pat
 async fn gateway(State(state): State<Arc<AppState>>, headers: HeaderMap, ws: WebSocketUpgrade) -> Result<Response, ApiError> {
     let me = auth_user(&state, &headers)?;
     Ok(ws.on_upgrade(move |socket| gateway_loop(socket, state, me)))
+}
+
+fn related_user(conn: &rusqlite::Connection, a: Id, b: Id) -> bool {
+    a == b
+        || conn
+            .query_row(
+                "SELECT 1 FROM guild_members x JOIN guild_members y ON x.guild_id=y.guild_id WHERE x.user_id=?1 AND y.user_id=?2 LIMIT 1",
+                params![a, b],
+                |_| Ok(()),
+            )
+            .optional()
+            .ok()
+            .flatten()
+            .is_some()
+        || conn
+            .query_row(
+                "SELECT 1 FROM relationships WHERE (user_id=?1 AND other_id=?2) OR (user_id=?2 AND other_id=?1) LIMIT 1",
+                params![a, b],
+                |_| Ok(()),
+            )
+            .optional()
+            .ok()
+            .flatten()
+            .is_some()
+}
+
+fn gateway_event_visible(state: &AppState, me: Id, event: &GatewayEvent) -> bool {
+    let conn = state.store.conn();
+    match event {
+        GatewayEvent::Ready(_) | GatewayEvent::ReadyCheck | GatewayEvent::InteractionCreate { .. } => false,
+        GatewayEvent::MessageCreate(m) | GatewayEvent::MessageUpdate(m) | GatewayEvent::ReactionUpdate(m) => {
+            store::can_view(&conn, m.channel_id, me)
+        }
+        GatewayEvent::MessageDelete { channel_id, .. } => store::can_view(&conn, *channel_id, me),
+        GatewayEvent::TypingStart { channel_id, .. } => store::can_view(&conn, *channel_id, me),
+        GatewayEvent::PresenceUpdate { user_id, .. } => related_user(&conn, me, *user_id),
+        GatewayEvent::ChannelCreate(c) | GatewayEvent::ChannelUpdate(c) => store::can_view(&conn, c.id, me),
+        GatewayEvent::ChannelDelete { guild_id: Some(guild_id), .. } => store::guild_member(&conn, *guild_id, me),
+        GatewayEvent::ChannelDelete { channel_id, guild_id: None } => store::is_dm_member(&conn, *channel_id, me),
+        GatewayEvent::GuildCreate(g) | GatewayEvent::GuildUpdate(g) => store::guild_member(&conn, g.id, me),
+        GatewayEvent::GuildDelete { .. } => true,
+        GatewayEvent::MemberUpdate(m) => store::guild_member(&conn, m.guild_id, me),
+        GatewayEvent::MemberRemove { guild_id, .. }
+        | GatewayEvent::MemberCountUpdate { guild_id, .. }
+        | GatewayEvent::GuildMembers { guild_id, .. } => store::guild_member(&conn, *guild_id, me),
+        GatewayEvent::RelationshipUpdate(_) | GatewayEvent::RelationshipRemove { .. } => true,
+        GatewayEvent::UserUpdate(u) => related_user(&conn, me, u.id),
+        GatewayEvent::VoiceStateUpdate(v) => store::guild_member(&conn, v.guild_id, me),
+        GatewayEvent::ReadUpdate { channel_id, .. } => store::can_view(&conn, *channel_id, me),
+    }
 }
 
 async fn gateway_loop(socket: WebSocket, state: Arc<AppState>, me: Id) {
@@ -1168,6 +1334,9 @@ async fn gateway_loop(socket: WebSocket, state: Arc<AppState>, me: Id) {
             event = rx.recv() => {
                 match event {
                     Ok(event) => {
+                        if !gateway_event_visible(&state, me, &event) {
+                            continue;
+                        }
                         if let Ok(text) = serde_json::to_string(&event) {
                             if sink.send(WsMessage::Text(text.into())).await.is_err() {
                                 break;
@@ -1235,9 +1404,16 @@ pub fn hub() -> broadcast::Sender<GatewayEvent> {
 pub fn empty_map() -> HashMap<Id, usize> {
     HashMap::new()
 }
+#[derive(Deserialize, Default)]
+struct CdnQuery {
+    #[serde(default)]
+    w: Option<u32>,
+}
+
 async fn cdn_file(
     State(state): State<Arc<AppState>>,
     Path(file): Path<String>,
+    Query(query): Query<CdnQuery>,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
     let hash = file.split('.').next().unwrap_or("").to_string();
@@ -1253,6 +1429,47 @@ async fn cdn_file(
     let Some(bytes) = crate::crypto::open(&state.store.key(), &sealed) else {
         return (StatusCode::INTERNAL_SERVER_ERROR, "could not decrypt").into_response();
     };
+
+    if let Some(width) = query.w.filter(|w| (64..=2048).contains(w)) {
+        if content_type.starts_with("image/") {
+            let thumb_path = state.data_dir.join("thumbs").join(format!("{hash}-{width}.enc"));
+            if let Ok(sealed) = std::fs::read(&thumb_path) {
+                if let Some(thumb) = crate::crypto::open(&state.store.key(), &sealed) {
+                    return (
+                        [
+                            ("content-type", "image/png".to_string()),
+                            ("cache-control", "public, max-age=31536000, immutable".to_string()),
+                        ],
+                        thumb,
+                    )
+                        .into_response();
+                }
+            }
+            if let Ok(image) = image::load_from_memory(&bytes) {
+                let (w, h) = (image.width(), image.height());
+                if w > width {
+                    let target_h = ((h as f32) * (width as f32 / w as f32)).round().max(1.0) as u32;
+                    let thumb = image::imageops::thumbnail(&image, width, target_h);
+                    let mut out = Vec::new();
+                    if thumb.write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png).is_ok() {
+                        if let Some(dir) = thumb_path.parent() {
+                            let _ = std::fs::create_dir_all(dir);
+                        }
+                        let _ = std::fs::write(&thumb_path, crate::crypto::seal(&state.store.key(), &out));
+                        return (
+                            [
+                                ("content-type", "image/png".to_string()),
+                                ("cache-control", "public, max-age=31536000, immutable".to_string()),
+                            ],
+                            out,
+                        )
+                            .into_response();
+                    }
+                }
+            }
+        }
+    }
+
     (
         [
             ("content-type", content_type),

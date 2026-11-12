@@ -545,6 +545,8 @@ fn dispatch(state: &AppState, user: Id, intents: u64, event: &GatewayEvent) -> O
         }
         GatewayEvent::ReadUpdate { .. }
         | GatewayEvent::GuildMembers { .. }
+        | GatewayEvent::MemberRemove { .. }
+        | GatewayEvent::MemberCountUpdate { .. }
         | GatewayEvent::ReadyCheck
         | GatewayEvent::Ready(_) => None,
     }

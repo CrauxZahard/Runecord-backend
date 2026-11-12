@@ -150,6 +150,42 @@ pub struct PermissionOverwrite {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct GuildSummary {
+    pub id: Id,
+    pub name: String,
+    pub icon_color: u32,
+    pub owner_id: Id,
+    pub description: String,
+    pub member_count: u32,
+    #[serde(default)]
+    pub tag: String,
+    #[serde(default)]
+    pub permissions: u64,
+    #[serde(default)]
+    pub unread_count: u32,
+    #[serde(default)]
+    pub mention_count: u32,
+    pub created_at: i64,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct GuildDetail {
+    pub guild: GuildSummary,
+    pub channels: Vec<Channel>,
+    pub roles: Vec<Role>,
+    pub overwrites: Vec<ChannelOverwrites>,
+    pub permissions: u64,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct MemberPage {
+    pub members: Vec<Member>,
+    pub total: u32,
+    pub next_offset: Option<u32>,
+    pub presences: BTreeMap<Id, Presence>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Guild {
     pub id: Id,
     pub name: String,
@@ -376,7 +412,7 @@ pub struct DmChannel {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Bootstrap {
     pub user: User,
-    pub guilds: Vec<Guild>,
+    pub guilds: Vec<GuildSummary>,
     pub dms: Vec<DmChannel>,
     pub relationships: Vec<Relationship>,
     pub reads: Vec<ReadState>,
@@ -627,6 +663,8 @@ pub enum GatewayEvent {
     GuildUpdate(Box<Guild>),
     GuildDelete { guild_id: Id },
     MemberUpdate(Box<Member>),
+    MemberRemove { guild_id: Id, user_id: Id },
+    MemberCountUpdate { guild_id: Id, count: u32 },
     GuildMembers { guild_id: Id, members: Vec<Member> },
     RelationshipUpdate(Box<Relationship>),
     RelationshipRemove { user_id: Id },
