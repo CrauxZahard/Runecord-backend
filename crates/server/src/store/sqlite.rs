@@ -9,6 +9,7 @@ const SCHEMA: &str = include_str!("../../../../migrations/0001_init.sql");
 const MIGRATIONS: &[(&str, &str)] = &[
     ("0001_init", SCHEMA),
     ("0002_bots", include_str!("../../../../migrations/0002_bots.sql")),
+    ("0003_platform", include_str!("../../../../migrations/0003_platform.sql")),
 ];
 
 /// Applies numbered migrations once each and returns the connection.
@@ -238,6 +239,11 @@ pub fn message_by_id(conn: &Connection, id: Id, me: Id) -> Option<Message> {
                     attachments: Vec::new(),
                     reactions: Vec::new(),
                     pinned: r.get::<_, i64>("pinned")? != 0,
+                    webhook: r.get::<_, Option<Id>>("webhook_id").ok().flatten().map(|wid| WebhookAuthor {
+                        id: wid,
+                        name: r.get::<_, Option<String>>("webhook_name").ok().flatten().unwrap_or_default(),
+                        color: r.get::<_, Option<i64>>("webhook_color").ok().flatten().unwrap_or(0) as u32,
+                    }),
                     thread_id: None,
                     mentions: mentions_in(&content),
                     mention_everyone: content.contains("@everyone") || content.contains("@here"),
@@ -542,6 +548,7 @@ pub fn bootstrap(conn: &Connection, me: Id) -> Bootstrap {
     }
 
     let presences = users.iter().map(|(id, u)| (*id, u.status)).collect();
+    let emojis = guild_ids.iter().flat_map(|g| guild_emojis(conn, *g)).collect();
     Bootstrap {
         user,
         guilds,
@@ -551,6 +558,8 @@ pub fn bootstrap(conn: &Connection, me: Id) -> Bootstrap {
         users: users.into_values().collect(),
         presences,
         unread,
+        emojis,
+        voice_states: Vec::new(),
     }
 }
 
@@ -743,8 +752,12 @@ pub fn share_users(conn: &Connection, a: Id, b: Id) -> HashSet<Id> {
 // ---------------------------------------------------------------------------
 
 pub fn hash_bot_token(token: &str) -> String {
+    hash_bytes(token.as_bytes())
+}
+
+pub fn hash_bytes(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
-    let digest = Sha256::digest(token.as_bytes());
+    let digest = Sha256::digest(bytes);
     digest.iter().map(|b| format!("{b:02x}")).collect()
 }
 
@@ -948,4 +961,287 @@ pub fn guild_members(conn: &Connection, guild: Id) -> Vec<Member> {
         m.roles = member_role_ids(conn, guild, m.user.id);
     }
     out
+}
+// ---------------------------------------------------------------------------
+// Applications, webhooks, audit, emojis, CDN registry
+// ---------------------------------------------------------------------------
+
+pub fn record_cdn(conn: &Connection, hash: &str, filename: &str, content_type: &str, size: u64) {
+    conn.execute(
+        "INSERT OR IGNORE INTO cdn_assets(hash, filename, content_type, size, created_at) VALUES(?1,?2,?3,?4,?5)",
+        params![hash, filename, content_type, size as i64, now_ms()],
+    ).ok();
+}
+
+pub fn create_application(conn: &Connection, owner: Id, name: &str, color: u32) -> Result<Application, String> {
+    let (bot, _token) = create_bot(conn, owner, &format!("{name} Bot"))?;
+    let id = next_id(conn);
+    conn.execute(
+        "INSERT INTO applications(id, owner_id, name, description, icon_color, bot_id, created_at) VALUES(?1,?2,?3,'',?4,?5,?6)",
+        params![id, owner, name.trim(), color as i64, bot.id, now_ms()],
+    ).map_err(|e| e.to_string())?;
+    Ok(Application {
+        id,
+        owner_id: owner,
+        name: name.trim().into(),
+        icon_color: color,
+        bot,
+        created_at: now_ms(),
+        ..Application::default()
+    })
+}
+
+fn application_from_row(r: &Row<'_>, conn: &Connection, with_bot: bool) -> rusqlite::Result<Application> {
+    let bot_id: Id = r.get("bot_id")?;
+    let bot = if with_bot { user_by_id(conn, bot_id).unwrap_or_default() } else { User { id: bot_id, ..User::default() } };
+    Ok(Application {
+        id: r.get("id")?,
+        owner_id: r.get("owner_id")?,
+        name: r.get("name")?,
+        description: r.get("description")?,
+        icon_color: r.get::<_, i64>("icon_color")? as u32,
+        bot,
+        created_at: r.get("created_at")?,
+    })
+}
+
+pub fn applications_owned(conn: &Connection, owner: Id) -> Vec<Application> {
+    let mut out = Vec::new();
+    if let Ok(mut stmt) = conn.prepare("SELECT * FROM applications WHERE owner_id=?1 ORDER BY id") {
+        if let Ok(rows) = stmt.query_map(params![owner], |r| application_from_row(r, conn, true)) {
+            out.extend(rows.flatten());
+        }
+    }
+    out
+}
+
+pub fn application_by_id(conn: &Connection, id: Id) -> Option<Application> {
+    conn.query_row("SELECT * FROM applications WHERE id=?1", params![id], |r| application_from_row(r, conn, true))
+        .optional().ok().flatten()
+}
+
+pub fn delete_application(conn: &Connection, owner: Id, id: Id) -> bool {
+    let Some(app) = application_by_id(conn, id) else { return false };
+    if app.owner_id != owner { return false; }
+    conn.execute("DELETE FROM application_commands WHERE app_id=?1", params![id]).ok();
+    conn.execute("DELETE FROM app_installs WHERE app_id=?1", params![id]).ok();
+    conn.execute("DELETE FROM applications WHERE id=?1", params![id]).ok();
+    delete_bot(conn, owner, app.bot.id);
+    true
+}
+
+pub fn create_install(conn: &Connection, app: Id) -> String {
+    const ALPHA: &[u8] = b"abcdefghjkmnpqrstuvwxyz23456789";
+    let mut bytes = [0u8; 8];
+    rand::RngCore::fill_bytes(&mut rand::rng(), &mut bytes);
+    let code: String = bytes.iter().map(|b| ALPHA[*b as usize % ALPHA.len()] as char).collect();
+    conn.execute(
+        "INSERT INTO app_installs(code, app_id, uses, created_at) VALUES(?1,?2,0,?3)",
+        params![code, app, now_ms()],
+    ).ok();
+    code
+}
+
+pub fn install_application(conn: &Connection, code: &str, guild: Id) -> Option<Application> {
+    let app_id: Id = conn.query_row("SELECT app_id FROM app_installs WHERE code=?1", params![code], |r| r.get(0)).optional().ok().flatten()?;
+    let app = application_by_id(conn, app_id)?;
+    add_bot_to_guild(conn, app.bot.id, guild);
+    conn.execute("UPDATE app_installs SET uses=uses+1 WHERE code=?1", params![code]).ok();
+    Some(app)
+}
+
+pub fn create_command(conn: &Connection, app: Id, name: &str, description: &str, options: &serde_json::Value) -> ApplicationCommand {
+    let id = next_id(conn);
+    conn.execute(
+        "INSERT INTO application_commands(id, app_id, name, description, options_json, created_at) VALUES(?1,?2,?3,?4,?5,?6)",
+        params![id, app, name, description, options.to_string(), now_ms()],
+    ).ok();
+    ApplicationCommand { id, app_id: app, name: name.into(), description: description.into(), options: options.clone() }
+}
+
+pub fn commands_for(conn: &Connection, app: Id) -> Vec<ApplicationCommand> {
+    let mut out = Vec::new();
+    if let Ok(mut stmt) = conn.prepare("SELECT * FROM application_commands WHERE app_id=?1") {
+        if let Ok(rows) = stmt.query_map(params![app], |r| {
+            let raw: String = r.get("options_json")?;
+            Ok(ApplicationCommand {
+                id: r.get("id")?,
+                app_id: r.get("app_id")?,
+                name: r.get("name")?,
+                description: r.get("description")?,
+                options: serde_json::from_str(&raw).unwrap_or(serde_json::Value::Array(Vec::new())),
+            })
+        }) {
+            out.extend(rows.flatten());
+        }
+    }
+    out
+}
+
+pub fn delete_command(conn: &Connection, app: Id, command: Id) -> bool {
+    conn.execute("DELETE FROM application_commands WHERE id=?1 AND app_id=?2", params![command, app]).is_ok()
+        && conn.changes() > 0
+}
+
+pub fn command_in_guild(conn: &Connection, name: &str, guild: Id) -> Option<(Application, ApplicationCommand)> {
+    let mut stmt = conn.prepare(
+        "SELECT a.*, c.id AS cmd_id, c.name AS cmd_name, c.description AS cmd_description, c.options_json
+         FROM application_commands c JOIN applications a ON a.id=c.app_id
+         WHERE c.name=?1
+           AND EXISTS(SELECT 1 FROM guild_members m WHERE m.guild_id=?2 AND m.user_id=a.bot_id)
+         LIMIT 1",
+    ).ok()?;
+    let row = stmt.query_row(params![name, guild], |r| {
+        let app = application_from_row(r, conn, true)?;
+        let raw: String = r.get("options_json")?;
+        let command = ApplicationCommand {
+            id: r.get("cmd_id")?,
+            app_id: app.id,
+            name: r.get("cmd_name")?,
+            description: r.get("cmd_description")?,
+            options: serde_json::from_str(&raw).unwrap_or(serde_json::Value::Array(Vec::new())),
+        };
+        Ok((app, command))
+    }).optional().ok().flatten();
+    row
+}
+
+pub fn create_webhook(conn: &Connection, guild: Id, channel: Id, creator: Id, name: &str, color: u32) -> (WebhookInfo, String) {
+    let id = next_id(conn);
+    let mut bytes = [0u8; 24];
+    rand::RngCore::fill_bytes(&mut rand::rng(), &mut bytes);
+    let token = format!("rcwh.{}", bytes.iter().map(|b| format!("{b:02x}")).collect::<String>());
+    conn.execute(
+        "INSERT INTO webhooks(id, guild_id, channel_id, creator_id, name, avatar_color, token_hash, created_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
+        params![id, guild, channel, creator, name, color as i64, hash_bot_token(&token), now_ms()],
+    ).ok();
+    (WebhookInfo { id, guild_id: guild, channel_id: channel, name: name.into(), avatar_color: color, token: Some(token.clone()) }, token)
+}
+
+pub fn webhooks_for_channel(conn: &Connection, channel: Id) -> Vec<WebhookInfo> {
+    let mut out = Vec::new();
+    if let Ok(mut stmt) = conn.prepare("SELECT * FROM webhooks WHERE channel_id=?1") {
+        if let Ok(rows) = stmt.query_map(params![channel], |r| {
+            Ok(WebhookInfo {
+                id: r.get("id")?,
+                guild_id: r.get("guild_id")?,
+                channel_id: r.get("channel_id")?,
+                name: r.get("name")?,
+                avatar_color: r.get::<_, i64>("avatar_color")? as u32,
+                token: None,
+            })
+        }) {
+            out.extend(rows.flatten());
+        }
+    }
+    out
+}
+
+pub fn delete_webhook(conn: &Connection, guild: Id, id: Id) -> bool {
+    conn.execute("DELETE FROM webhooks WHERE id=?1 AND guild_id=?2", params![id, guild]).ok();
+    conn.changes() > 0
+}
+
+pub fn webhook_by_token(conn: &Connection, id: Id, token: &str) -> Option<WebhookInfo> {
+    let hash = hash_bot_token(token);
+    conn.query_row(
+        "SELECT * FROM webhooks WHERE id=?1 AND token_hash=?2",
+        params![id, hash],
+        |r| Ok(WebhookInfo {
+            id: r.get("id")?,
+            guild_id: r.get("guild_id")?,
+            channel_id: r.get("channel_id")?,
+            name: r.get("name")?,
+            avatar_color: r.get::<_, i64>("avatar_color")? as u32,
+            token: None,
+        }),
+    ).optional().ok().flatten()
+}
+
+pub fn record_audit(conn: &Connection, guild: Id, actor: Id, action: i32, target: Option<Id>, changes: serde_json::Value) {
+    let id = next_id(conn);
+    conn.execute(
+        "INSERT INTO audit_log(id, guild_id, actor_id, action_type, target_id, changes, created_at) VALUES(?1,?2,?3,?4,?5,?6,?7)",
+        params![id, guild, actor, action, target, changes.to_string(), now_ms()],
+    ).ok();
+}
+
+pub fn audit_entries(conn: &Connection, guild: Id, limit: u32, before: Option<Id>) -> Vec<AuditEntry> {
+    let before = before.unwrap_or(i64::MAX);
+    let mut out = Vec::new();
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT * FROM audit_log WHERE guild_id=?1 AND id<?2 ORDER BY id DESC LIMIT ?3",
+    ) {
+        if let Ok(rows) = stmt.query_map(params![guild, before, limit.clamp(1, 100)], |r| {
+            let raw: String = r.get("changes")?;
+            Ok(AuditEntry {
+                id: r.get("id")?,
+                guild_id: r.get("guild_id")?,
+                actor_id: r.get("actor_id")?,
+                action_type: r.get::<_, i64>("action_type")? as i32,
+                target_id: r.get("target_id")?,
+                changes: serde_json::from_str(&raw).unwrap_or(serde_json::Value::Array(Vec::new())),
+                created_at: r.get("created_at")?,
+            })
+        }) {
+            out.extend(rows.flatten());
+        }
+    }
+    out
+}
+
+pub fn guild_emojis(conn: &Connection, guild: Id) -> Vec<Emoji> {
+    let mut out = Vec::new();
+    if let Ok(mut stmt) = conn.prepare("SELECT * FROM emojis WHERE guild_id=?1 ORDER BY id") {
+        if let Ok(rows) = stmt.query_map(params![guild], |r| {
+            Ok(Emoji {
+                id: r.get("id")?,
+                guild_id: r.get("guild_id")?,
+                name: r.get("name")?,
+                sticker: r.get::<_, i64>("sticker")? != 0,
+                url: r.get("url")?,
+            })
+        }) {
+            out.extend(rows.flatten());
+        }
+    }
+    out
+}
+
+pub fn create_emoji(conn: &Connection, guild: Id, uploader: Id, name: &str, sticker: bool, url: &str) -> Emoji {
+    let id = next_id(conn);
+    conn.execute(
+        "INSERT INTO emojis(id, guild_id, name, sticker, url, uploader_id, created_at) VALUES(?1,?2,?3,?4,?5,?6,?7)",
+        params![id, guild, name, sticker as i64, url, uploader, now_ms()],
+    ).ok();
+    Emoji { id, guild_id: guild, name: name.into(), sticker, url: url.into() }
+}
+
+pub fn delete_emoji(conn: &Connection, guild: Id, id: Id) -> bool {
+    conn.execute("DELETE FROM emojis WHERE id=?1 AND guild_id=?2", params![id, guild]).ok();
+    conn.changes() > 0
+}
+
+pub fn list_threads(conn: &Connection, parent: Id, me: Id) -> Vec<Channel> {
+    let mut out = Vec::new();
+    if let Ok(mut stmt) = conn.prepare("SELECT * FROM channels WHERE thread_parent_id=?1 AND kind='thread' ORDER BY id DESC") {
+        if let Ok(rows) = stmt.query_map(params![parent], channel_from_row) {
+            out.extend(rows.flatten().filter(|c| can_view(conn, c.id, me)));
+        }
+    }
+    out
+}
+pub fn regenerate_bot_token(conn: &Connection, bot: Id) -> String {
+    let mut bytes = [0u8; 32];
+    rand::RngCore::fill_bytes(&mut rand::rng(), &mut bytes);
+    let mut token = String::from("rcbot.");
+    for b in bytes {
+        token.push_str(&format!("{b:02x}"));
+    }
+    conn.execute(
+        "INSERT INTO bot_tokens(bot_id, token_hash, label, created_at) VALUES(?1,?2,'',?3)
+         ON CONFLICT(bot_id) DO UPDATE SET token_hash=excluded.token_hash",
+        params![bot, hash_bot_token(&token), now_ms()],
+    ).ok();
+    token
 }

@@ -3,6 +3,7 @@
 mod api;
 mod compat;
 mod gateway_v10;
+mod platform;
 mod ratelimit;
 mod store;
 
@@ -20,6 +21,18 @@ pub struct AppState {
     pub limits: ratelimit::RateLimiter,
     pub port: u16,
     pub v10: gateway_v10::Sessions,
+    pub voice: std::sync::Mutex<HashMap<i64, runecord_protocol::VoiceState>>,
+    pub interactions: std::sync::Mutex<HashMap<String, PendingInteraction>>,
+}
+
+#[derive(Clone)]
+pub struct PendingInteraction {
+    pub app_id: i64,
+    pub bot_id: i64,
+    pub channel_id: i64,
+    pub user_id: i64,
+    pub token: String,
+    pub created_at: i64,
 }
 
 #[tokio::main]
@@ -70,13 +83,17 @@ async fn main() {
         limits: ratelimit::RateLimiter::new(),
         port,
         v10: gateway_v10::Sessions::new(),
+        voice: std::sync::Mutex::new(HashMap::new()),
+        interactions: std::sync::Mutex::new(HashMap::new()),
     });
 
     gateway_v10::spawn_pump(state.clone());
 
     let app = api::router(state.clone())
         .nest("/api/v10", compat::router(state.clone()))
+        .merge(platform::router(state.clone()))
         .nest_service("/uploads", tower_http::services::ServeDir::new(api::uploads_dir(&data)))
+        .nest_service("/cdn", tower_http::services::ServeDir::new(data.join("cdn")))
         .layer(DefaultBodyLimit::max(48 * 1024 * 1024))
         .layer(axum::middleware::from_fn_with_state(state.clone(), ratelimit::middleware));
 

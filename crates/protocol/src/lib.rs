@@ -298,6 +298,7 @@ pub struct Message {
     pub attachments: Vec<Attachment>,
     pub reactions: Vec<Reaction>,
     pub pinned: bool,
+    pub webhook: Option<WebhookAuthor>,
     pub thread_id: Option<Id>,
     pub mentions: Vec<Id>,
     pub mention_everyone: bool,
@@ -350,6 +351,13 @@ pub struct ReadState {
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct WebhookAuthor {
+    pub id: Id,
+    pub name: String,
+    pub color: u32,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct DmChannel {
     pub channel: Channel,
     pub recipients: Vec<User>,
@@ -365,6 +373,67 @@ pub struct Bootstrap {
     pub users: Vec<User>,
     pub presences: BTreeMap<Id, Presence>,
     pub unread: BTreeMap<Id, u32>,
+    pub emojis: Vec<Emoji>,
+    pub voice_states: Vec<VoiceState>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Emoji {
+    pub id: Id,
+    pub guild_id: Id,
+    pub name: String,
+    pub sticker: bool,
+    pub url: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Application {
+    pub id: Id,
+    pub owner_id: Id,
+    pub name: String,
+    pub description: String,
+    pub icon_color: u32,
+    pub bot: User,
+    pub created_at: i64,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct ApplicationCommand {
+    pub id: Id,
+    pub app_id: Id,
+    pub name: String,
+    pub description: String,
+    pub options: serde_json::Value,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct WebhookInfo {
+    pub id: Id,
+    pub guild_id: Id,
+    pub channel_id: Id,
+    pub name: String,
+    pub avatar_color: u32,
+    pub token: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct AuditEntry {
+    pub id: Id,
+    pub guild_id: Id,
+    pub actor_id: Id,
+    pub action_type: i32,
+    pub target_id: Option<Id>,
+    pub changes: serde_json::Value,
+    pub created_at: i64,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct VoiceState {
+    pub user_id: Id,
+    pub guild_id: Id,
+    pub channel_id: Option<Id>,
+    pub self_mute: bool,
+    pub self_deaf: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -547,6 +616,8 @@ pub enum GatewayEvent {
     RelationshipRemove { user_id: Id },
     ReadUpdate { channel_id: Id, last_read_id: Option<Id>, mention_count: u32 },
     UserUpdate(Box<User>),
+    VoiceStateUpdate(Box<VoiceState>),
+    InteractionCreate { app_id: Id, payload: serde_json::Value },
     ReadyCheck,
 }
 

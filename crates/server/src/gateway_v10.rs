@@ -168,6 +168,17 @@ struct Resume {
     seq: u64,
 }
 
+#[derive(Deserialize)]
+struct VoiceIn {
+    guild_id: Id,
+    #[serde(default)]
+    channel_id: Option<Id>,
+    #[serde(default)]
+    self_mute: bool,
+    #[serde(default)]
+    self_deaf: bool,
+}
+
 /// Buffers every broadcast event for every live session, connected or not.
 pub fn spawn_pump(state: Arc<AppState>) {
     tokio::spawn(async move {
@@ -263,9 +274,16 @@ async fn run(socket: WebSocket, state: Arc<AppState>) {
                     WsMessage::Text(text) => {
                         if let Ok(value) = serde_json::from_str::<Value>(&text) {
                             let op = value.get("op").and_then(|o| o.as_u64()).unwrap_or(0) as u8;
+                            let d = value.get("d").cloned().unwrap_or(Value::Null);
                             if op == OP_HEARTBEAT {
                                 let _ = send_json(&mut sink, json!({ "op": OP_HEARTBEAT_ACK, "d": Value::Null })).await;
                                 state.v10.touch(&sid);
+                            } else if op == 4 {
+                                if let Ok(v) = serde_json::from_value::<VoiceIn>(d) {
+                                    let _ = crate::platform::set_voice(&state, user, v.guild_id, v.channel_id, v.self_mute, v.self_deaf);
+                                }
+                            } else if op == 6 {
+                                let _ = send_json(&mut sink, json!({ "op": OP_INVALID_SESSION, "d": false })).await;
                             }
                         }
                     }
@@ -491,6 +509,29 @@ fn dispatch(state: &AppState, user: Id, intents: u64, event: &GatewayEvent) -> O
                 return None;
             }
             Some(("USER_UPDATE".into(), user_json(u)))
+        }
+        GatewayEvent::VoiceStateUpdate(v) => {
+            if intents & (1 << 7) == 0 || !member(&conn, v.guild_id, user) {
+                return None;
+            }
+            Some((
+                "VOICE_STATE_UPDATE".into(),
+                json!({
+                    "guild_id": v.guild_id.to_string(),
+                    "channel_id": v.channel_id.map(|c| c.to_string()),
+                    "user_id": v.user_id.to_string(),
+                    "self_mute": v.self_mute,
+                    "self_deaf": v.self_deaf,
+                    "session_id": "local"
+                }),
+            ))
+        }
+        GatewayEvent::InteractionCreate { app_id, payload } => {
+            let app = store::application_by_id(&conn, *app_id)?;
+            if app.bot.id != user {
+                return None;
+            }
+            Some(("INTERACTION_CREATE".into(), payload.clone()))
         }
         GatewayEvent::RelationshipUpdate(r) => {
             Some(("RELATIONSHIP_ADD".into(), json!({ "id": r.user.id.to_string(), "type": 1, "user": user_json(&r.user) })))

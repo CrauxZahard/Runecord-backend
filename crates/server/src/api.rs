@@ -161,7 +161,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/channels/{id}/typing", post(typing))
         .route("/api/channels/{id}/upload", post(upload))
         .route("/api/channels/{id}/pins", get(list_pins))
-        .route("/api/channels/{id}/threads", post(create_thread))
+        .route("/api/channels/{id}/threads", get(list_threads).post(create_thread))
         .route("/api/messages/{id}", patch(edit_message).delete(delete_message))
         .route("/api/messages/{id}/reactions", post(toggle_reaction))
         .route("/api/messages/{id}/pin", post(toggle_pin))
@@ -234,7 +234,15 @@ async fn logout(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Resul
 
 async fn bootstrap(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Result<Json<Bootstrap>, ApiError> {
     let me = auth_user(&state, &headers)?;
-    Ok(Json(crate::store::Store::bootstrap(&state.store, me)))
+    let mut out = crate::store::Store::bootstrap(&state.store, me);
+    out.voice_states = state
+        .voice
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .values()
+        .cloned()
+        .collect();
+    Ok(Json(out))
 }
 
 #[derive(Deserialize)]
@@ -692,6 +700,15 @@ async fn typing(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(cha
     Ok(Json(json!({ "ok": true })))
 }
 
+async fn list_threads(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(channel): Path<Id>) -> Result<Json<Vec<Channel>>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    if !store::can_view(&conn, channel, me) {
+        return Err(forbidden());
+    }
+    Ok(Json(store::list_threads(&conn, channel, me)))
+}
+
 async fn create_thread(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(channel): Path<Id>, Json(body): Json<CreateMessageThread>) -> Result<Json<Channel>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
@@ -736,12 +753,16 @@ async fn upload(
     let clean: String = q.name.chars().filter(|c| !matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')).collect();
     let filename = if clean.trim().is_empty() { "file".to_string() } else { clean };
     let ext = filename.rsplit('.').next().unwrap_or("bin").to_lowercase();
-    let stored = format!("{}.{}", uuid::Uuid::new_v4().simple(), ext);
-    let dir = state.data_dir.join("uploads");
+    let hash = store::hash_bytes(&body);
+    let stored = format!("{hash}.{ext}");
+    let dir = state.data_dir.join("cdn");
     std::fs::create_dir_all(&dir).map_err(internal)?;
-    std::fs::write(dir.join(&stored), &body).map_err(internal)?;
-    let url = format!("/uploads/{stored}");
+    if !dir.join(&stored).exists() {
+        std::fs::write(dir.join(&stored), &body).map_err(internal)?;
+    }
+    let url = format!("/cdn/{stored}");
     let conn = state.store.conn();
+    store::record_cdn(&conn, &hash, &filename, &q.content_type, body.len() as u64);
     let id = store::next_id(&conn);
     conn.execute(
         "INSERT INTO attachments(id, uploader_id, filename, size, content_type, url, width, height) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
