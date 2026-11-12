@@ -65,7 +65,11 @@ pub fn auth_user(state: &AppState, headers: &HeaderMap) -> Result<Id, ApiError> 
             .map_err(internal)?;
         return me.ok_or_else(unauthorized);
     }    if let Some(token) = value.strip_prefix("Bot ") {
-        return store::bot_for_token(&conn, token.trim()).ok_or_else(unauthorized);
+        let bot = store::bot_for_token(&conn, token.trim()).ok_or_else(unauthorized)?;
+        if !store::bot_scopes(&conn, bot).iter().any(|s| s == "bot") {
+            return Err(unauthorized());
+        }
+        return Ok(bot);
     }
     Err(unauthorized())
 }

@@ -321,7 +321,11 @@ fn auth_token(state: &AppState, raw: &str) -> Option<(Id, bool)> {
     let token = raw.trim();
     let conn = state.store.conn();
     if let Some(bot) = token.strip_prefix("Bot ") {
-        return store::bot_for_token(&conn, bot.trim()).map(|id| (id, true));
+        let id = store::bot_for_token(&conn, bot.trim())?;
+        if !store::bot_scopes(&conn, id).iter().any(|s| s == "bot") {
+            return None;
+        }
+        return Some((id, true));
     }
     conn.query_row("SELECT user_id FROM sessions WHERE token=?1", rusqlite::params![store::hash_bot_token(token)], |r| r.get(0))
         .optional()

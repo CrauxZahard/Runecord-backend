@@ -137,6 +137,11 @@ async fn install_app(
     if !has(store::base_permissions(&conn, body.guild_id, me), perm::MANAGE_GUILD) {
         return Err(forbidden());
     }
+    for scope in &body.scopes {
+        if scope != "bot" && scope != "applications.commands" {
+            return Err(bad(format!("Unknown scope: {scope}")));
+        }
+    }
     let actor = store::base_permissions(&conn, body.guild_id, me);
     if body.permissions & !actor != 0 && actor & perm::ADMINISTRATOR == 0 {
         return Err(forbidden());
@@ -149,6 +154,7 @@ async fn install_app(
     }
     let scopes = if body.scopes.is_empty() { "bot applications.commands".to_string() } else { body.scopes.join(" ") };
     conn.execute("UPDATE applications SET scopes=?1, permissions=?2 WHERE id=?3", rusqlite::params![scopes, body.permissions as i64, app.id]).ok();
+    let app = store::application_by_id(&conn, app.id).unwrap_or(app);
     drop(conn);
     let _ = state.tx.send(GatewayEvent::GuildMembers { guild_id: body.guild_id, members: Vec::new() });
     Ok(Json(app))
@@ -197,7 +203,7 @@ async fn create_command(
     let me = crate::api::auth_human(&state, &headers)?;
     let conn = state.store.conn();
     let found = store::application_by_id(&conn, app).ok_or_else(not_found)?;
-    if found.owner_id != me {
+    if found.owner_id != me || !found.scopes.iter().any(|s| s == "applications.commands") {
         return Err(forbidden());
     }
     let name = body.name.trim().to_lowercase();
@@ -243,6 +249,9 @@ async fn invoke_interaction(
         return Err(forbidden());
     }
     let (app, command) = store::command_in_guild(&conn, body.command.trim_start_matches('/'), guild).ok_or_else(not_found)?;
+    if !app.scopes.iter().any(|s| s == "applications.commands") {
+        return Err(forbidden());
+    }
     let interaction_id = store::next_id(&conn);
     let mut bytes = [0u8; 24];
     rand::RngCore::fill_bytes(&mut rand::rng(), &mut bytes);

@@ -449,7 +449,7 @@ pub fn bootstrap(conn: &Connection, me: Id) -> Bootstrap {
             }
             out
         };
-        let members = {
+        let mut members = {
             let mut out = Vec::new();
             if let Ok(mut stmt) = conn.prepare(
                 "SELECT u.*, gm.nickname, gm.joined_at FROM guild_members gm JOIN users u ON u.id=gm.user_id WHERE gm.guild_id=?1 ORDER BY gm.joined_at",
@@ -473,6 +473,7 @@ pub fn bootstrap(conn: &Connection, me: Id) -> Bootstrap {
             }
             out
         };
+        members.retain(|m| m.user.id == me || has(base_permissions(conn, *gid, m.user.id), perm::VIEW_CHANNEL));
         let member_count = members.len() as u32;
         guilds.push(Guild {
             id: guild_row.0,
@@ -1317,4 +1318,12 @@ pub fn set_overwrite(conn: &Connection, channel: Id, target: Id, kind: &str, all
 pub fn delete_overwrite(conn: &Connection, channel: Id, target: Id, kind: &str) -> bool {
     conn.execute("DELETE FROM overwrites WHERE channel_id=?1 AND target_id=?2 AND target_kind=?3", params![channel, target, kind]).ok();
     conn.changes() > 0
+}
+pub fn bot_scopes(conn: &Connection, bot: Id) -> Vec<String> {
+    conn.query_row("SELECT scopes FROM applications WHERE bot_id=?1", params![bot], |r| r.get::<_, String>(0))
+        .optional()
+        .ok()
+        .flatten()
+        .map(|s| s.split_whitespace().map(str::to_string).collect())
+        .unwrap_or_else(|| vec!["bot".to_string()])
 }
