@@ -10,10 +10,11 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("0001_init", SCHEMA),
     ("0002_bots", include_str!("../../../../migrations/0002_bots.sql")),
     ("0003_platform", include_str!("../../../../migrations/0003_platform.sql")),
+    ("0004_profile", include_str!("../../../../migrations/0004_profile.sql")),
 ];
 
 /// Applies numbered migrations once each and returns the connection.
-fn migrate(conn: &Connection) -> rusqlite::Result<()> {
+pub fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS schema_migrations (
             version TEXT PRIMARY KEY,
@@ -82,6 +83,8 @@ pub fn user_from_row(r: &Row<'_>) -> rusqlite::Result<User> {
         username: r.get("username")?,
         display_name: r.get("display_name")?,
         avatar_color: r.get::<_, i64>("avatar_color")? as u32,
+        avatar_border: r.get::<_, i64>("avatar_border").unwrap_or(0) as u32,
+        banner_color: r.get::<_, i64>("banner_color").unwrap_or(0) as u32,
         bio: r.get("bio")?,
         custom_status: r.get("custom_status")?,
         status: presence_from(&r.get::<_, String>("status")?),
@@ -414,7 +417,7 @@ pub fn bootstrap(conn: &Connection, me: Id) -> Bootstrap {
 
     for gid in &guild_ids {
         let Ok(guild_row) = conn.query_row("SELECT * FROM guilds WHERE id=?1", params![gid], |r| {
-            Ok((r.get::<_, Id>("id")?, r.get::<_, String>("name")?, r.get::<_, i64>("icon_color")? as u32, r.get::<_, Id>("owner_id")?, r.get::<_, String>("description")?, r.get::<_, i64>("created_at")?))
+            Ok((r.get::<_, Id>("id")?, r.get::<_, String>("name")?, r.get::<_, i64>("icon_color")? as u32, r.get::<_, Id>("owner_id")?, r.get::<_, String>("description")?, r.get::<_, i64>("created_at")?, r.get::<_, String>("tag")?))
         }) else {
             continue;
         };
@@ -472,6 +475,7 @@ pub fn bootstrap(conn: &Connection, me: Id) -> Bootstrap {
             description: guild_row.4,
             member_count,
             created_at: guild_row.5,
+            tag: guild_row.6,
             channels,
             roles,
             members,
@@ -720,6 +724,11 @@ pub fn seed_demo(conn: &Connection, me_hint: Option<&str>) -> Option<String> {
 
     conn.execute("INSERT OR REPLACE INTO reads(user_id, channel_id, last_read_id) VALUES(?1,212,0)", params![nova]).ok();
     conn.execute("INSERT OR REPLACE INTO reads(user_id, channel_id, last_read_id) VALUES(?1,213,0)", params![nova]).ok();
+
+    conn.execute("UPDATE guilds SET tag='RUNE' WHERE id=100", []).ok();
+    conn.execute("UPDATE guilds SET tag='DSGN' WHERE id=300", []).ok();
+    conn.execute("UPDATE users SET avatar_border=?1, banner_color=?2 WHERE id=?3", params![0x5865f2i64, 0x5865f2i64, nova]).ok();
+    conn.execute("UPDATE users SET avatar_border=?1, banner_color=?2 WHERE id=?3", params![0xeb459ei64, 0x1e1f22i64, maya]).ok();
 
     Some("nova".to_string())
 }

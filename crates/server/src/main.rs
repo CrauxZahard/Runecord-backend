@@ -2,6 +2,7 @@
 
 mod api;
 mod compat;
+mod crypto;
 mod gateway_v10;
 mod platform;
 mod ratelimit;
@@ -64,8 +65,15 @@ async fn main() {
         eprintln!("runecord: could not create data folder: {err}");
         std::process::exit(1);
     }
-    let db_path = data.join("runecord.db");
-    let store = match store::SqliteStore::open(&db_path) {
+    let db_path = data.join("runecord.db.enc");
+    let key = match crypto::load_key(&data) {
+        Ok(k) => k,
+        Err(err) => {
+            eprintln!("runecord: could not load encryption key: {err}");
+            std::process::exit(1);
+        }
+    };
+    let store = match store::SqliteStore::open(&db_path, key) {
         Ok(s) => s,
         Err(err) => {
             eprintln!("runecord: could not open {}: {err}", db_path.display());
@@ -73,6 +81,7 @@ async fn main() {
         }
     };
     let _ = store::seed_demo(&store.conn(), Some("nova"));
+    store.flush_now();
 
     let (tx, _) = broadcast::channel(1024);
     let state = Arc::new(AppState {
@@ -88,12 +97,19 @@ async fn main() {
     });
 
     gateway_v10::spawn_pump(state.clone());
+    {
+        let store = state.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                store.store.flush_if_changed();
+            }
+        });
+    }
 
     let app = api::router(state.clone())
-        .nest("/api/v10", compat::router(state.clone()))
+        .nest("/api/v1", compat::router(state.clone()))
         .merge(platform::router(state.clone()))
-        .nest_service("/uploads", tower_http::services::ServeDir::new(api::uploads_dir(&data)))
-        .nest_service("/cdn", tower_http::services::ServeDir::new(data.join("cdn")))
         .layer(DefaultBodyLimit::max(48 * 1024 * 1024))
         .layer(axum::middleware::from_fn_with_state(state.clone(), ratelimit::middleware));
 

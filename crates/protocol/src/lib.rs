@@ -44,6 +44,10 @@ pub struct User {
     pub display_name: String,
     /// sRGB accent colour for the generated avatar.
     pub avatar_color: u32,
+    #[serde(default)]
+    pub avatar_border: u32,
+    #[serde(default)]
+    pub banner_color: u32,
     pub bio: String,
     pub custom_status: String,
     pub status: Presence,
@@ -151,6 +155,8 @@ pub struct Guild {
     pub owner_id: Id,
     pub description: String,
     pub member_count: u32,
+    #[serde(default)]
+    pub tag: String,
     pub created_at: i64,
     pub channels: Vec<Channel>,
     pub roles: Vec<Role>,
@@ -499,6 +505,8 @@ pub struct UpdateGuild {
     pub name: Option<String>,
     pub icon_color: Option<u32>,
     pub description: Option<String>,
+    #[serde(default)]
+    pub tag: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -1,10 +1,10 @@
-// End-to-end probe for /gateway/v10: HELLO, IDENTIFY, READY, HEARTBEAT, RESUME, replay.
+// End-to-end probe for /gateway/v1: HELLO, IDENTIFY, READY, HEARTBEAT, RESUME, replay.
 // Usage: node scripts/gw_probe.mjs <bot-token> <guild-id> <channel-id>
 const token = process.argv[2];
 const guild = process.argv[3] || "100";
 const channel = process.argv[4] || "211";
 const base = "http://127.0.0.1:47800";
-const wsUrl = "ws://127.0.0.1:47800/gateway/v10";
+const wsUrl = "ws://127.0.0.1:47800/gateway/v1";
 const intents = (1 << 0) | (1 << 1) | (1 << 7) | (1 << 8) | (1 << 9) | (1 << 12) | (1 << 15);
 
 function client() {
@@ -36,7 +36,7 @@ function client() {
 }
 
 async function post(content) {
-  const res = await fetch(`${base}/api/v10/channels/${channel}/messages`, {
+  const res = await fetch(`${base}/api/v1/channels/${channel}/messages`, {
     method: "POST",
     headers: { Authorization: `Bot ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ content }),

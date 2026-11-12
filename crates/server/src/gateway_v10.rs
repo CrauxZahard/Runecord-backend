@@ -323,7 +323,7 @@ fn auth_token(state: &AppState, raw: &str) -> Option<(Id, bool)> {
     if let Some(bot) = token.strip_prefix("Bot ") {
         return store::bot_for_token(&conn, bot.trim()).map(|id| (id, true));
     }
-    conn.query_row("SELECT user_id FROM sessions WHERE token=?1", rusqlite::params![token], |r| r.get(0))
+    conn.query_row("SELECT user_id FROM sessions WHERE token=?1", rusqlite::params![store::hash_bot_token(token)], |r| r.get(0))
         .optional()
         .ok()
         .flatten()
@@ -342,11 +342,11 @@ fn ready_payload(state: &AppState, user_id: Id, session_id: &str) -> Value {
         }
     }
     json!({
-        "v": 10,
+        "v": 1,
         "user": user_json(&user),
         "guilds": guilds,
         "session_id": session_id,
-        "resume_gateway_url": format!("ws://127.0.0.1:{}/gateway/v10", state.port),
+        "resume_gateway_url": format!("ws://127.0.0.1:{}/gateway/v1", state.port),
         "application": { "id": "0", "flags": 0 }
     })
 }

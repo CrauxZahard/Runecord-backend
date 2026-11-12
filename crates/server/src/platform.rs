@@ -56,7 +56,8 @@ fn save_cdn(state: &AppState, bytes: &[u8], filename: &str, content_type: &str) 
     std::fs::create_dir_all(&dir).map_err(internal)?;
     let path = dir.join(&stored);
     if !path.exists() {
-        std::fs::write(&path, bytes).map_err(internal)?;
+        let sealed = crate::crypto::seal(&state.store.key(), bytes);
+        std::fs::write(&path, sealed).map_err(internal)?;
     }
     store::record_cdn(&state.store.conn(), &hash, filename, content_type, bytes.len() as u64);
     Ok(format!("/cdn/{stored}"))

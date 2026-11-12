@@ -12,7 +12,7 @@ path = "src/main.rs"
 runecord-protocol = { path = "../protocol" }
 axum = { version = "0.8", features = ["ws", "macros"] }
 tokio = { version = "1", features = ["full"] }
-rusqlite = { version = "0.37", features = ["bundled"] }
+rusqlite = { version = "0.37", features = ["bundled", "serialize"] }
 argon2 = "0.5"
 rand = "0.9"
 rand_core = { version = "0.6", features = ["getrandom"] }
@@ -24,3 +24,4 @@ tower = "0.5"
 tower-http = { version = "0.6", features = ["fs"] }
 sha2 = "0.10"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+aes-gcm = "0.10"

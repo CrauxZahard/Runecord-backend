@@ -24,6 +24,14 @@ Defaults to `127.0.0.1:47800`. `--port` and `--data` override.
 
 The first start creates `data/runecord.db`, applies `migrations/`, and seeds the demo accounts (`nova`, `maya`, `leo`, `sam`, `ana`, `priya`, `tom`, `runebot`; password `runecord`).
 
+## Encryption at rest
+
+- `data/key.bin`: 32-byte master key generated on first run. Keep it — losing it makes the data unreadable.
+- `data/runecord.db.enc`: the whole database is serialized and AES-256-GCM encrypted, then rewritten when changes are flushed (after each request and every 2 seconds). SQLite runs in memory; no plaintext database file is written.
+- CDN files are AES-256-GCM encrypted on disk and decrypted by `GET /cdn/{file}`.
+- Session tokens, bot tokens and webhook tokens are stored as SHA-256 hashes.
+- Threat model: protects data at rest (stolen disk or backup). A process running as your user can read `key.bin`; wrap it with DPAPI/OS keychain for stronger isolation.
+
 ## Storage
 
 Phase 1 keeps SQLite (WAL) behind `store::Store`, with SQLite queries in `store::sqlite`. Phase 2 adds a Postgres adapter behind the same trait and moves the remaining direct `store.conn()` handler queries into trait methods. Postgres is the intended production adapter; SQLite stays the zero-install local adapter.
@@ -69,34 +77,34 @@ A limited request returns `429` with `Retry-After`, `X-RateLimit-Global` (when g
 { "code": 0, "message": "You are being rate limited.", "retry_after": 4.746, "global": false }
 ```
 
-### Discord-compatible `/api/v10`
+### Discord-compatible `/api/v1`
 
 Mounted alongside the native API; same auth (`Bot` or `Bearer`), Discord-shaped payloads
 (string IDs, nested `author`, ISO timestamps, `type`, `reactions[].emoji`):
 
 ```
-GET    /api/v10/users/@me
-GET    /api/v10/users/@me/guilds
-GET    /api/v10/users/{id}
-GET    /api/v10/guilds/{guild_id}
-GET    /api/v10/guilds/{guild_id}/channels
-GET    /api/v10/guilds/{guild_id}/members
-PUT    /api/v10/guilds/{guild_id}/members/{user_id}/roles/{role_id}
-DELETE /api/v10/guilds/{guild_id}/members/{user_id}/roles/{role_id}
-GET    /api/v10/channels/{channel_id}
-GET    /api/v10/channels/{channel_id}/messages?before=&after=&around=&limit=
-POST   /api/v10/channels/{channel_id}/messages
-GET    /api/v10/channels/{channel_id}/messages/{message_id}
-PATCH  /api/v10/channels/{channel_id}/messages/{message_id}
-DELETE /api/v10/channels/{channel_id}/messages/{message_id}
-PUT    /api/v10/channels/{channel_id}/messages/{message_id}/reactions/{emoji}/@me
-DELETE /api/v10/channels/{channel_id}/messages/{message_id}/reactions/{emoji}/@me
-GET    /api/v10/channels/{channel_id}/pins
-PUT    /api/v10/channels/{channel_id}/pins/{message_id}
-DELETE /api/v10/channels/{channel_id}/pins/{message_id}
-POST   /api/v10/channels/{channel_id}/typing
-GET    /api/v10/gateway
-GET    /api/v10/gateway/bot
+GET    /api/v1/users/@me
+GET    /api/v1/users/@me/guilds
+GET    /api/v1/users/{id}
+GET    /api/v1/guilds/{guild_id}
+GET    /api/v1/guilds/{guild_id}/channels
+GET    /api/v1/guilds/{guild_id}/members
+PUT    /api/v1/guilds/{guild_id}/members/{user_id}/roles/{role_id}
+DELETE /api/v1/guilds/{guild_id}/members/{user_id}/roles/{role_id}
+GET    /api/v1/channels/{channel_id}
+GET    /api/v1/channels/{channel_id}/messages?before=&after=&around=&limit=
+POST   /api/v1/channels/{channel_id}/messages
+GET    /api/v1/channels/{channel_id}/messages/{message_id}
+PATCH  /api/v1/channels/{channel_id}/messages/{message_id}
+DELETE /api/v1/channels/{channel_id}/messages/{message_id}
+PUT    /api/v1/channels/{channel_id}/messages/{message_id}/reactions/{emoji}/@me
+DELETE /api/v1/channels/{channel_id}/messages/{message_id}/reactions/{emoji}/@me
+GET    /api/v1/channels/{channel_id}/pins
+PUT    /api/v1/channels/{channel_id}/pins/{message_id}
+DELETE /api/v1/channels/{channel_id}/pins/{message_id}
+POST   /api/v1/channels/{channel_id}/typing
+GET    /api/v1/gateway
+GET    /api/v1/gateway/bot
 ```
 
 `POST .../messages` accepts `{content, nonce?, message_reference?: {message_id}}`.
@@ -104,11 +112,11 @@ Errors use `{code, message}` with Discord codes (`10003 Unknown Channel`, `10008
 `50001 Missing Access`, `50035 Invalid Form Body`).
 
 The gateway URL still speaks Runecord's native `{op, d}` envelope at `/gateway`. Discord
-opcodes live at `/gateway/v10`.
+opcodes live at `/gateway/v1`.
 
 ### Gateway v10
 
-`ws://127.0.0.1:47800/gateway/v10` implements the Discord handshake:
+`ws://127.0.0.1:47800/gateway/v1` implements the Discord handshake:
 
 | Op | Direction | Payload |
 |---|---|---|
@@ -123,7 +131,7 @@ Intents: `GUILDS`, `GUILD_MEMBERS`, `GUILD_PRESENCES`, `GUILD_MESSAGES`,
 `DIRECT_MESSAGES`, `MESSAGE_CONTENT` (omit `intents` to receive all).
 Sessions live in memory for 5 minutes with a 1024-event replay buffer; a central pump
 buffers events even while the socket is closed. Event payloads use the same
-Discord shapes as `/api/v10`.
+Discord shapes as `/api/v1`.
 
 Probe it with:
 
@@ -137,6 +145,6 @@ message sent while the socket was offline.
 ## Phase plan
 
 1. Repo split, migrations, Store boundary, reseed. ✅
-2. **Phase A (done):** Discord /gateway/v10 with HELLO/IDENTIFY/READY/HEARTBEAT/RESUME, intents, replay buffer, bot presence.
+2. **Phase A (done):** Discord /gateway/v1 with HELLO/IDENTIFY/READY/HEARTBEAT/RESUME, intents, replay buffer, bot presence.
 3. **Phase B (done, API):** applications + install links, application commands/interactions, webhooks, audit log, content-addressed CDN.
 4. **Phase C (partial):** emoji/sticker backend, thread/forum APIs and client thread browser, voice signaling + participant panel. Remaining: bots/apps/audit settings UI, custom-emoji picker/rendering, slash-command invocation UI, multiline composer.

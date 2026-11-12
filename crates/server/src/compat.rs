@@ -1,4 +1,4 @@
-//! Discord-compatible `/api/v10` surface: paths, payload shapes, query semantics and errors.
+//! Discord-compatible `/api/v1` surface: paths, payload shapes, query semantics and errors.
 //! This runs beside the native API and uses the same store; the gateway it advertises still
 //! speaks Runecord's native event envelope until Phase 2 adds Discord opcodes/RESUME.
 
@@ -101,6 +101,8 @@ pub(crate) fn user_json(u: &User) -> Value {
         "system": false,
         "public_flags": 0,
         "bio": u.bio,
+        "avatar_border": u.avatar_border,
+        "banner_color": u.banner_color,
         "status": match u.status {
             Presence::Online => "online",
             Presence::Idle => "idle",
@@ -120,7 +122,8 @@ pub(crate) fn guild_json(conn: &rusqlite::Connection, g: &Guild, me: Id) -> Valu
         "owner_id": uid(g.owner_id),
         "permissions": store::base_permissions(conn, g.id, me).to_string(),
         "features": [],
-        "member_count": g.member_count
+        "member_count": g.member_count,
+        "tag": g.tag
     })
 }
 
@@ -658,5 +661,5 @@ async fn remove_member_role(
 }
 
 async fn gateway(State(state): State<Arc<AppState>>) -> Json<Value> {
-    Json(json!({ "url": format!("ws://127.0.0.1:{}/gateway/v10", state.port) }))
+    Json(json!({ "url": format!("ws://127.0.0.1:{}/gateway/v1", state.port) }))
 }

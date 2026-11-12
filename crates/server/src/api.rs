@@ -60,7 +60,7 @@ pub fn auth_user(state: &AppState, headers: &HeaderMap) -> Result<Id, ApiError> 
     let conn = state.store.conn();
     if let Some(token) = value.strip_prefix("Bearer ") {
         let me: Option<Id> = conn
-            .query_row("SELECT user_id FROM sessions WHERE token=?1", params![token.trim()], |r| r.get(0))
+            .query_row("SELECT user_id FROM sessions WHERE token=?1", params![store::hash_bot_token(token.trim())], |r| r.get(0))
             .optional()
             .map_err(internal)?;
         return me.ok_or_else(unauthorized);
@@ -80,7 +80,7 @@ pub fn auth_human(state: &AppState, headers: &HeaderMap) -> Result<Id, ApiError>
         .filter(|t| !t.is_empty())
         .ok_or_else(unauthorized)?;
     let conn = state.store.conn();
-    conn.query_row("SELECT user_id FROM sessions WHERE token=?1", params![token], |r| r.get(0))
+    conn.query_row("SELECT user_id FROM sessions WHERE token=?1", params![store::hash_bot_token(token)], |r| r.get(0))
         .optional()
         .map_err(internal)?
         .ok_or_else(unauthorized)
@@ -120,7 +120,7 @@ fn make_session(conn: &rusqlite::Connection, user_id: Id) -> String {
     let token = new_token();
     conn.execute(
         "INSERT INTO sessions(token, user_id, created_at) VALUES(?1,?2,?3)",
-        params![token, user_id, now_ms()],
+        params![store::hash_bot_token(&token), user_id, now_ms()],
     )
     .ok();
     token
@@ -160,6 +160,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/channels/{id}/messages", get(list_messages).post(send_message))
         .route("/api/channels/{id}/typing", post(typing))
         .route("/api/channels/{id}/upload", post(upload))
+        .route("/cdn/{file}", get(cdn_file))
         .route("/api/channels/{id}/pins", get(list_pins))
         .route("/api/channels/{id}/threads", get(list_threads).post(create_thread))
         .route("/api/messages/{id}", patch(edit_message).delete(delete_message))
@@ -172,7 +173,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/friends/{id}/block", post(friend_block))
         .route("/api/dms/{id}", post(open_dm))
         .route("/gateway", get(gateway))
-        .route("/gateway/v10", get(crate::gateway_v10::handler))
+        .route("/gateway/v1", get(crate::gateway_v10::handler))
         .with_state(state)
 }
 
@@ -227,7 +228,7 @@ async fn logout(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Resul
     auth_user(&state, &headers)?;
     if let Some(token) = headers.get("authorization").and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer ")) {
         let conn = state.store.conn();
-        conn.execute("DELETE FROM sessions WHERE token=?1", params![token.trim()]).ok();
+        conn.execute("DELETE FROM sessions WHERE token=?1", params![store::hash_bot_token(token.trim())]).ok();
     }
     Ok(Json(json!({ "ok": true })))
 }
@@ -305,6 +306,8 @@ async fn delete_bot_account(
 #[derive(Deserialize)]
 struct MeBody {    display_name: Option<String>,
     avatar_color: Option<u32>,
+    avatar_border: Option<u32>,
+    banner_color: Option<u32>,
     bio: Option<String>,
     custom_status: Option<String>,
 }
@@ -317,6 +320,12 @@ async fn update_me(State(state): State<Arc<AppState>>, headers: HeaderMap, Json(
     }
     if let Some(color) = body.avatar_color {
         conn.execute("UPDATE users SET avatar_color=?1 WHERE id=?2", params![color as i64, me]).map_err(internal)?;
+    }
+    if let Some(border) = body.avatar_border {
+        conn.execute("UPDATE users SET avatar_border=?1 WHERE id=?2", params![border as i64, me]).map_err(internal)?;
+    }
+    if let Some(banner) = body.banner_color {
+        conn.execute("UPDATE users SET banner_color=?1 WHERE id=?2", params![banner as i64, me]).map_err(internal)?;
     }
     if let Some(bio) = body.bio {
         conn.execute("UPDATE users SET bio=?1 WHERE id=?2", params![bio, me]).map_err(internal)?;
@@ -424,6 +433,9 @@ async fn update_guild(State(state): State<Arc<AppState>>, headers: HeaderMap, Pa
     }
     if let Some(color) = body.icon_color {
         conn.execute("UPDATE guilds SET icon_color=?1 WHERE id=?2", params![color as i64, id]).map_err(internal)?;
+    }
+    if let Some(tag) = body.tag {
+        conn.execute("UPDATE guilds SET tag=?1 WHERE id=?2", params![tag.chars().take(8).collect::<String>(), id]).map_err(internal)?;
     }
     if let Some(desc) = body.description {
         conn.execute("UPDATE guilds SET description=?1 WHERE id=?2", params![desc, id]).map_err(internal)?;
@@ -758,7 +770,8 @@ async fn upload(
     let dir = state.data_dir.join("cdn");
     std::fs::create_dir_all(&dir).map_err(internal)?;
     if !dir.join(&stored).exists() {
-        std::fs::write(dir.join(&stored), &body).map_err(internal)?;
+        let sealed = crate::crypto::seal(&state.store.key(), &body);
+        std::fs::write(dir.join(&stored), sealed).map_err(internal)?;
     }
     let url = format!("/cdn/{stored}");
     let conn = state.store.conn();
@@ -1171,4 +1184,31 @@ pub fn hub() -> broadcast::Sender<GatewayEvent> {
 
 pub fn empty_map() -> HashMap<Id, usize> {
     HashMap::new()
+}
+async fn cdn_file(
+    State(state): State<Arc<AppState>>,
+    Path(file): Path<String>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let hash = file.split('.').next().unwrap_or("").to_string();
+    let content_type: String = {
+        let conn = state.store.conn();
+        conn.query_row("SELECT content_type FROM cdn_assets WHERE hash=?1", params![hash], |r| r.get(0))
+            .unwrap_or_else(|_| "application/octet-stream".to_string())
+    };
+    let path = state.data_dir.join("cdn").join(&file);
+    let Ok(sealed) = std::fs::read(path) else {
+        return (StatusCode::NOT_FOUND, "not found").into_response();
+    };
+    let Some(bytes) = crate::crypto::open(&state.store.key(), &sealed) else {
+        return (StatusCode::INTERNAL_SERVER_ERROR, "could not decrypt").into_response();
+    };
+    (
+        [
+            ("content-type", content_type),
+            ("cache-control", "public, max-age=31536000, immutable".to_string()),
+        ],
+        bytes,
+    )
+        .into_response()
 }
