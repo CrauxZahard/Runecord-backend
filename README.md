@@ -137,6 +137,6 @@ message sent while the socket was offline.
 ## Phase plan
 
 1. Repo split, migrations, Store boundary, reseed. ✅
-2. **Phase A (done):** Discord `/gateway/v10` with HELLO/IDENTIFY/READY/HEARTBEAT/RESUME, intents, replay buffer, bot presence.
-3. **Phase B:** local applications + install links, webhooks, slash commands, audit log, CDN.
-4. **Phase C:** custom emoji/stickers, thread/forum UI, bots settings UI, voice signaling + voice panel, multiline composer.
+2. **Phase A (done):** Discord /gateway/v10 with HELLO/IDENTIFY/READY/HEARTBEAT/RESUME, intents, replay buffer, bot presence.
+3. **Phase B (done, API):** applications + install links, application commands/interactions, webhooks, audit log, content-addressed CDN.
+4. **Phase C (partial):** emoji/sticker backend, thread/forum APIs and client thread browser, voice signaling + participant panel. Remaining: bots/apps/audit settings UI, custom-emoji picker/rendering, slash-command invocation UI, multiline composer.
