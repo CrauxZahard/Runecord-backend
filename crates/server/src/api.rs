@@ -6,7 +6,7 @@ use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, patch, post};
+use axum::routing::{delete, get, patch, post, put};
 use axum::{Json, Router};
 use futures_util::{SinkExt, StreamExt};
 use rand::RngCore;
@@ -150,7 +150,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/guilds", post(create_guild))
         .route("/api/guilds/{id}", patch(update_guild).delete(delete_guild))
         .route("/api/guilds/{id}/channels", post(create_channel))
-        .route("/api/guilds/{id}/roles", post(create_role))
+        .route("/api/guilds/{id}/roles", get(list_roles).post(create_role))
+        .route("/api/guilds/{id}/permissions", get(my_permissions))
+        .route("/api/channels/{id}/permissions", get(channel_overwrites))
+        .route("/api/channels/{id}/permissions/{target}", put(set_channel_overwrite).delete(clear_channel_overwrite))
         .route("/api/guilds/{id}/roles/{role_id}", patch(update_role).delete(delete_role))
         .route("/api/guilds/{id}/members/{user_id}", patch(update_member))
         .route("/api/guilds/{id}/invites", post(create_invite))
@@ -924,7 +927,11 @@ async fn open_dm(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(ot
 async fn create_role(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(guild): Path<Id>, Json(body): Json<CreateRole>) -> Result<Json<Role>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    if !has(store::base_permissions(&conn, guild, me), perm::MANAGE_ROLES) {
+    let actor = store::base_permissions(&conn, guild, me);
+    if !has(actor, perm::MANAGE_ROLES) {
+        return Err(forbidden());
+    }
+    if actor & perm::ADMINISTRATOR == 0 && body.permissions & !actor != 0 {
         return Err(forbidden());
     }
     let id = store::next_id(&conn);
@@ -941,11 +948,25 @@ async fn create_role(State(state): State<Arc<AppState>>, headers: HeaderMap, Pat
 async fn update_role(State(state): State<Arc<AppState>>, headers: HeaderMap, Path((guild, role)): Path<(Id, Id)>, Json(body): Json<RoleUpdate>) -> Result<Json<Role>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    if !has(store::base_permissions(&conn, guild, me), perm::MANAGE_ROLES) {
+    let actor = store::base_permissions(&conn, guild, me);
+    if !has(actor, perm::MANAGE_ROLES) {
         return Err(forbidden());
     }
+    let admin = actor & perm::ADMINISTRATOR != 0;
+    if !admin {
+        if let Some(pos) = store::role_position(&conn, guild, role) {
+            if pos > 0 && pos >= store::member_top_role(&conn, guild, me) {
+                return Err(forbidden());
+            }
+        }
+        if let Some(perms) = body.permissions {
+            if perms & !actor != 0 {
+                return Err(forbidden());
+            }
+        }
+    }
     if let Some(name) = body.name {
-        conn.execute("UPDATE roles SET name=?1 WHERE id=?2 AND guild_id=?3", params![name, role, guild]).ok();
+        conn.execute("UPDATE roles SET name=?1 WHERE id=?2 AND guild_id=?3 AND name<>'@everyone'", params![name, role, guild]).ok();
     }
     if let Some(color) = body.color {
         conn.execute("UPDATE roles SET color=?1 WHERE id=?2 AND guild_id=?3", params![color as i64, role, guild]).ok();
@@ -966,8 +987,17 @@ async fn update_role(State(state): State<Arc<AppState>>, headers: HeaderMap, Pat
 async fn delete_role(State(state): State<Arc<AppState>>, headers: HeaderMap, Path((guild, role)): Path<(Id, Id)>) -> Result<Json<serde_json::Value>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    if !has(store::base_permissions(&conn, guild, me), perm::MANAGE_ROLES) {
+    let actor = store::base_permissions(&conn, guild, me);
+    if !has(actor, perm::MANAGE_ROLES) {
         return Err(forbidden());
+    }
+    let admin = actor & perm::ADMINISTRATOR != 0;
+    if !admin {
+        if let Some(pos) = store::role_position(&conn, guild, role) {
+            if pos > 0 && pos >= store::member_top_role(&conn, guild, me) {
+                return Err(forbidden());
+            }
+        }
     }
     conn.execute("DELETE FROM roles WHERE id=?1 AND guild_id=?2 AND name<>'@everyone'", params![role, guild]).ok();
     Ok(Json(json!({ "ok": true })))
@@ -976,15 +1006,31 @@ async fn delete_role(State(state): State<Arc<AppState>>, headers: HeaderMap, Pat
 async fn update_member(State(state): State<Arc<AppState>>, headers: HeaderMap, Path((guild, user)): Path<(Id, Id)>, Json(body): Json<MemberUpdate>) -> Result<Json<Member>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    if me != user && !has(store::base_permissions(&conn, guild, me), perm::MANAGE_ROLES) {
-        return Err(forbidden());
+    if me != user {
+        let actor = store::base_permissions(&conn, guild, me);
+        if !has(actor, perm::MANAGE_ROLES) {
+            return Err(forbidden());
+        }
+        if !store::can_manage_member(&conn, guild, me, user) {
+            return Err(forbidden());
+        }
     }
     if let Some(nick) = body.nickname {
         conn.execute("UPDATE guild_members SET nickname=?1 WHERE guild_id=?2 AND user_id=?3", params![nick, guild, user]).ok();
     }
     if let Some(roles) = body.role_ids {
+        let actor = store::base_permissions(&conn, guild, me);
+        let admin = actor & perm::ADMINISTRATOR != 0;
+        let top = store::member_top_role(&conn, guild, me);
         conn.execute("DELETE FROM member_roles WHERE guild_id=?1 AND user_id=?2", params![guild, user]).ok();
         for rid in roles {
+            if !admin {
+                if let Some(pos) = store::role_position(&conn, guild, rid) {
+                    if pos >= top {
+                        continue;
+                    }
+                }
+            }
             conn.execute("INSERT OR IGNORE INTO member_roles(guild_id, user_id, role_id) VALUES(?1,?2,?3)", params![guild, user, rid]).ok();
         }
     }
@@ -1212,3 +1258,98 @@ async fn cdn_file(
     )
         .into_response()
 }
+async fn list_roles(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(guild): Path<Id>) -> Result<Json<Vec<Role>>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    if !has(store::base_permissions(&conn, guild, me), perm::VIEW_CHANNEL) {
+        return Err(forbidden());
+    }
+    Ok(Json(store::guild_roles(&conn, guild)))
+}
+
+async fn my_permissions(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(guild): Path<Id>) -> Result<Json<serde_json::Value>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    if !has(store::base_permissions(&conn, guild, me), perm::VIEW_CHANNEL) {
+        return Err(forbidden());
+    }
+    let mut channels = serde_json::Map::new();
+    for channel in store::list_children(&conn, guild) {
+        channels.insert(channel.id.to_string(), json!(store::channel_permissions(&conn, channel.id, me)));
+    }
+    Ok(Json(json!({ "permissions": store::base_permissions(&conn, guild, me), "channels": channels })))
+}
+
+async fn channel_overwrites(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(channel): Path<Id>) -> Result<Json<Vec<PermissionOverwrite>>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    if !store::can_view(&conn, channel, me) {
+        return Err(forbidden());
+    }
+    Ok(Json(store::overwrites(&conn, channel)))
+}
+
+#[derive(Deserialize)]
+struct OverwriteBody {
+    kind: String,
+    #[serde(default)]
+    allow: u64,
+    #[serde(default)]
+    deny: u64,
+}
+
+async fn set_channel_overwrite(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path((channel, target)): Path<(Id, Id)>,
+    Json(body): Json<OverwriteBody>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    let ch = store::channel_by_id(&conn, channel).ok_or_else(not_found)?;
+    let Some(guild) = ch.guild_id else { return Err(forbidden()) };
+    let actor = store::base_permissions(&conn, guild, me);
+    if !has(actor, perm::MANAGE_ROLES) {
+        return Err(forbidden());
+    }
+    let admin = actor & perm::ADMINISTRATOR != 0;
+    if !admin && body.allow & !actor != 0 {
+        return Err(forbidden());
+    }
+    let kind = if body.kind == "member" { "member" } else { "role" };
+    if kind == "member" {
+        if !store::can_manage_member(&conn, guild, me, target) {
+            return Err(forbidden());
+        }
+    } else if !admin {
+        if let Some(pos) = store::role_position(&conn, guild, target) {
+            if pos >= store::member_top_role(&conn, guild, me) {
+                return Err(forbidden());
+            }
+        }
+    }
+    store::set_overwrite(&conn, channel, target, kind, body.allow, body.deny);
+    let updated = store::channel_by_id(&conn, channel).ok_or_else(not_found)?;
+    drop(conn);
+    let _ = state.tx.send(GatewayEvent::ChannelUpdate(Box::new(updated)));
+    Ok(Json(json!({ "ok": true })))
+}
+
+async fn clear_channel_overwrite(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path((channel, target)): Path<(Id, Id)>,
+    Json(body): Json<OverwriteBody>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    let ch = store::channel_by_id(&conn, channel).ok_or_else(not_found)?;
+    let Some(guild) = ch.guild_id else { return Err(forbidden()) };
+    if !has(store::base_permissions(&conn, guild, me), perm::MANAGE_ROLES) {
+        return Err(forbidden());
+    }
+    let kind = if body.kind == "member" { "member" } else { "role" };
+    store::delete_overwrite(&conn, channel, target, kind);
+    Ok(Json(json!({ "ok": true })))
+}
+

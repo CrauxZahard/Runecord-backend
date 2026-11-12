@@ -120,6 +120,10 @@ async fn app_install_link(State(state): State<Arc<AppState>>, headers: HeaderMap
 #[derive(Deserialize)]
 struct InstallBody {
     guild_id: Id,
+    #[serde(default)]
+    permissions: u64,
+    #[serde(default)]
+    scopes: Vec<String>,
 }
 
 async fn install_app(
@@ -133,7 +137,18 @@ async fn install_app(
     if !has(store::base_permissions(&conn, body.guild_id, me), perm::MANAGE_GUILD) {
         return Err(forbidden());
     }
+    let actor = store::base_permissions(&conn, body.guild_id, me);
+    if body.permissions & !actor != 0 && actor & perm::ADMINISTRATOR == 0 {
+        return Err(forbidden());
+    }
     let app = store::install_application(&conn, &code, body.guild_id).ok_or_else(not_found)?;
+    if body.permissions != 0 {
+        let role_id = store::next_id(&conn);
+        conn.execute("INSERT INTO roles(id, guild_id, name, color, permissions, position, hoist, mentionable) VALUES(?1,?2,?3,?4,?5,1,0,0)", rusqlite::params![role_id, body.guild_id, format!("{} bot", app.name), app.icon_color as i64, body.permissions as i64]).ok();
+        conn.execute("INSERT OR IGNORE INTO member_roles(guild_id, user_id, role_id) VALUES(?1,?2,?3)", rusqlite::params![body.guild_id, app.bot.id, role_id]).ok();
+    }
+    let scopes = if body.scopes.is_empty() { "bot applications.commands".to_string() } else { body.scopes.join(" ") };
+    conn.execute("UPDATE applications SET scopes=?1, permissions=?2 WHERE id=?3", rusqlite::params![scopes, body.permissions as i64, app.id]).ok();
     drop(conn);
     let _ = state.tx.send(GatewayEvent::GuildMembers { guild_id: body.guild_id, members: Vec::new() });
     Ok(Json(app))

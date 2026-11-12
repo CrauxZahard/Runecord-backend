@@ -11,6 +11,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("0002_bots", include_str!("../../../../migrations/0002_bots.sql")),
     ("0003_platform", include_str!("../../../../migrations/0003_platform.sql")),
     ("0004_profile", include_str!("../../../../migrations/0004_profile.sql")),
+    ("0005_permissions", include_str!("../../../../migrations/0005_permissions.sql")),
 ];
 
 /// Applies numbered migrations once each and returns the connection.
@@ -139,6 +140,7 @@ pub fn channel_from_row(r: &Row<'_>) -> rusqlite::Result<Channel> {
         last_message_id: r.get("last_message_id")?,
         owner_id: r.get("owner_id")?,
         thread,
+        my_permissions: 0,
     })
 }
 
@@ -433,6 +435,11 @@ pub fn bootstrap(conn: &Connection, me: Id) -> Bootstrap {
         for ch in &channels {
             overwrite_list.push(ChannelOverwrites { channel_id: ch.id, overwrites: overwrites(conn, ch.id) });
         }
+        let permissions = base_permissions(conn, *gid, me);
+        channels.retain(|c| c.kind == ChannelKind::Category || can_view(conn, c.id, me));
+        for ch in &mut channels {
+            ch.my_permissions = channel_permissions(conn, ch.id, me);
+        }
         let roles = {
             let mut out = Vec::new();
             if let Ok(mut stmt) = conn.prepare("SELECT * FROM roles WHERE guild_id=?1 ORDER BY position DESC") {
@@ -476,6 +483,7 @@ pub fn bootstrap(conn: &Connection, me: Id) -> Bootstrap {
             member_count,
             created_at: guild_row.5,
             tag: guild_row.6,
+            permissions,
             channels,
             roles,
             members,
@@ -995,6 +1003,8 @@ pub fn create_application(conn: &Connection, owner: Id, name: &str, color: u32) 
         name: name.trim().into(),
         icon_color: color,
         bot,
+        scopes: vec!["bot".into(), "applications.commands".into()],
+        permissions: 0,
         created_at: now_ms(),
         ..Application::default()
     })
@@ -1010,6 +1020,8 @@ fn application_from_row(r: &Row<'_>, conn: &Connection, with_bot: bool) -> rusql
         description: r.get("description")?,
         icon_color: r.get::<_, i64>("icon_color")? as u32,
         bot,
+        scopes: r.get::<_, String>("scopes").unwrap_or_default().split_whitespace().map(str::to_string).collect(),
+        permissions: r.get::<_, i64>("permissions").unwrap_or(0) as u64,
         created_at: r.get("created_at")?,
     })
 }
@@ -1253,4 +1265,56 @@ pub fn regenerate_bot_token(conn: &Connection, bot: Id) -> String {
         params![bot, hash_bot_token(&token), now_ms()],
     ).ok();
     token
+}
+pub fn guild_roles(conn: &Connection, guild: Id) -> Vec<Role> {
+    let mut out = Vec::new();
+    if let Ok(mut stmt) = conn.prepare("SELECT * FROM roles WHERE guild_id=?1 ORDER BY position DESC") {
+        if let Ok(rows) = stmt.query_map(params![guild], role_from_row) {
+            out.extend(rows.flatten());
+        }
+    }
+    out
+}
+
+pub fn member_top_role(conn: &Connection, guild: Id, user: Id) -> i32 {
+    let owner: Option<Id> = conn.query_row("SELECT owner_id FROM guilds WHERE id=?1", params![guild], |r| r.get(0)).optional().ok().flatten();
+    if owner == Some(user) {
+        return i32::MAX;
+    }
+    let mut top = 0;
+    for role in guild_roles(conn, guild) {
+        if role.name == "@everyone" {
+            continue;
+        }
+        if member_role_ids(conn, guild, user).contains(&role.id) {
+            top = top.max(role.position);
+        }
+    }
+    top
+}
+
+pub fn can_manage_member(conn: &Connection, guild: Id, actor: Id, target: Id) -> bool {
+    if actor == target {
+        return true;
+    }
+    let actor_top = member_top_role(conn, guild, actor);
+    let target_top = member_top_role(conn, guild, target);
+    actor_top > target_top
+}
+
+pub fn role_position(conn: &Connection, guild: Id, role: Id) -> Option<i32> {
+    conn.query_row("SELECT position FROM roles WHERE id=?1 AND guild_id=?2", params![role, guild], |r| r.get(0)).optional().ok().flatten()
+}
+
+pub fn set_overwrite(conn: &Connection, channel: Id, target: Id, kind: &str, allow: u64, deny: u64) {
+    conn.execute(
+        "INSERT INTO overwrites(channel_id, target_id, target_kind, allow, deny) VALUES(?1,?2,?3,?4,?5)
+         ON CONFLICT(channel_id, target_id, target_kind) DO UPDATE SET allow=excluded.allow, deny=excluded.deny",
+        params![channel, target, kind, allow as i64, deny as i64],
+    ).ok();
+}
+
+pub fn delete_overwrite(conn: &Connection, channel: Id, target: Id, kind: &str) -> bool {
+    conn.execute("DELETE FROM overwrites WHERE channel_id=?1 AND target_id=?2 AND target_kind=?3", params![channel, target, kind]).ok();
+    conn.changes() > 0
 }

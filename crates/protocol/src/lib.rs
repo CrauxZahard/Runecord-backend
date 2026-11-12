@@ -130,6 +130,8 @@ pub struct Channel {
     pub last_message_id: Option<Id>,
     pub owner_id: Option<Id>,
     pub thread: Option<ThreadInfo>,
+    #[serde(default)]
+    pub my_permissions: u64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -157,6 +159,8 @@ pub struct Guild {
     pub member_count: u32,
     #[serde(default)]
     pub tag: String,
+    #[serde(default)]
+    pub permissions: u64,
     pub created_at: i64,
     pub channels: Vec<Channel>,
     pub roles: Vec<Role>,
@@ -400,6 +404,10 @@ pub struct Application {
     pub description: String,
     pub icon_color: u32,
     pub bot: User,
+    #[serde(default)]
+    pub scopes: Vec<String>,
+    #[serde(default)]
+    pub permissions: u64,
     pub created_at: i64,
 }
 
