@@ -51,6 +51,27 @@ fn internal(err: impl std::fmt::Display) -> ApiError {
 }
 
 pub fn auth_user(state: &AppState, headers: &HeaderMap) -> Result<Id, ApiError> {
+    let value = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .ok_or_else(unauthorized)?;
+    let conn = state.store.conn();
+    if let Some(token) = value.strip_prefix("Bearer ") {
+        let me: Option<Id> = conn
+            .query_row("SELECT user_id FROM sessions WHERE token=?1", params![token.trim()], |r| r.get(0))
+            .optional()
+            .map_err(internal)?;
+        return me.ok_or_else(unauthorized);
+    }    if let Some(token) = value.strip_prefix("Bot ") {
+        return store::bot_for_token(&conn, token.trim()).ok_or_else(unauthorized);
+    }
+    Err(unauthorized())
+}
+
+/// Session auth for human-only endpoints (login, bot management, friends).
+pub fn auth_human(state: &AppState, headers: &HeaderMap) -> Result<Id, ApiError> {
     let token = headers
         .get("authorization")
         .and_then(|v| v.to_str().ok())
@@ -59,12 +80,10 @@ pub fn auth_user(state: &AppState, headers: &HeaderMap) -> Result<Id, ApiError> 
         .filter(|t| !t.is_empty())
         .ok_or_else(unauthorized)?;
     let conn = state.store.conn();
-    let me: Option<Id> = conn
-        .query_row("SELECT user_id FROM sessions WHERE token=?1", params![token], |r| r.get(0))
+    conn.query_row("SELECT user_id FROM sessions WHERE token=?1", params![token], |r| r.get(0))
         .optional()
-        .map_err(internal)?;
-    drop(conn);
-    me.ok_or_else(unauthorized)
+        .map_err(internal)?
+        .ok_or_else(unauthorized)
 }
 
 fn new_token() -> String {
@@ -126,6 +145,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/bootstrap", get(bootstrap))
         .route("/api/me", patch(update_me))
         .route("/api/read", post(update_read))
+        .route("/api/bots", get(list_bots).post(create_bot_account))
+        .route("/api/bots/{id}", delete(delete_bot_account))
         .route("/api/guilds", post(create_guild))
         .route("/api/guilds/{id}", patch(update_guild).delete(delete_guild))
         .route("/api/guilds/{id}/channels", post(create_channel))
@@ -212,12 +233,68 @@ async fn logout(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Resul
 
 async fn bootstrap(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Result<Json<Bootstrap>, ApiError> {
     let me = auth_user(&state, &headers)?;
-    Ok(Json(state.store.bootstrap(me)))
+    Ok(Json(crate::store::Store::bootstrap(&state.store, me)))
 }
 
 #[derive(Deserialize)]
-struct MeBody {
-    display_name: Option<String>,
+struct CreateBotBody {
+    name: String,
+    guild_id: Option<Id>,
+}
+
+#[derive(serde::Serialize)]
+struct BotCreated {
+    bot: User,
+    token: String,
+}
+
+async fn list_bots(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Result<Json<Vec<User>>, ApiError> {
+    let me = auth_human(&state, &headers)?;
+    let conn = state.store.conn();
+    Ok(Json(store::bots_owned(&conn, me)))
+}
+
+async fn create_bot_account(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(body): Json<CreateBotBody>,
+) -> Result<Json<BotCreated>, ApiError> {
+    let me = auth_human(&state, &headers)?;
+    let conn = state.store.conn();
+    if let Some(guild) = body.guild_id {
+        if !has(store::base_permissions(&conn, guild, me), perm::MANAGE_GUILD) {
+            return Err(forbidden());
+        }
+    }
+    let (bot, token) = store::create_bot(&conn, me, &body.name).map_err(bad)?;
+    if let Some(guild) = body.guild_id {
+        let _ = store::add_bot_to_guild(&conn, bot.id, guild);
+        let member = Member { guild_id: guild, user: bot.clone(), ..Member::default() };
+        drop(conn);
+        let _ = state.tx.send(GatewayEvent::MemberUpdate(Box::new(member)));
+        return Ok(Json(BotCreated { bot, token }));
+    }
+    drop(conn);
+    Ok(Json(BotCreated { bot, token }))
+}
+
+async fn delete_bot_account(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<Id>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let me = auth_human(&state, &headers)?;
+    let conn = state.store.conn();
+    if !store::delete_bot(&conn, me, id) {
+        return Err(not_found());
+    }
+    drop(conn);
+    let _ = state.tx.send(GatewayEvent::GuildMembers { guild_id: 0, members: Vec::new() });
+    Ok(Json(json!({ "ok": true })))
+}
+
+#[derive(Deserialize)]
+struct MeBody {    display_name: Option<String>,
     avatar_color: Option<u32>,
     bio: Option<String>,
     custom_status: Option<String>,

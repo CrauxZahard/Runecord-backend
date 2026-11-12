@@ -6,10 +6,39 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 const SCHEMA: &str = include_str!("../../../../migrations/0001_init.sql");
 
+const MIGRATIONS: &[(&str, &str)] = &[
+    ("0001_init", SCHEMA),
+    ("0002_bots", include_str!("../../../../migrations/0002_bots.sql")),
+];
+
+/// Applies numbered migrations once each and returns the connection.
+fn migrate(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS schema_migrations (
+            version TEXT PRIMARY KEY,
+            applied_at INTEGER NOT NULL
+        );",
+    )?;
+    for (version, sql) in MIGRATIONS {
+        let applied: bool = conn
+            .query_row("SELECT 1 FROM schema_migrations WHERE version=?1", params![version], |_| Ok(()))
+            .optional()?
+            .is_some();
+        if applied {
+            continue;
+        }
+        conn.execute_batch(sql)?;
+        conn.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES(?1,?2)",
+            params![version, now_ms()],
+        )?;
+    }
+    Ok(())
+}
 
 pub fn open(path: &std::path::Path) -> rusqlite::Result<Connection> {
     let conn = Connection::open(path)?;
-    conn.execute_batch(SCHEMA)?;
+    migrate(&conn)?;
     Ok(conn)
 }
 
@@ -55,6 +84,7 @@ pub fn user_from_row(r: &Row<'_>) -> rusqlite::Result<User> {
         bio: r.get("bio")?,
         custom_status: r.get("custom_status")?,
         status: presence_from(&r.get::<_, String>("status")?),
+        is_bot: r.get::<_, i64>("is_bot").unwrap_or(0) != 0,
         created_at: r.get("created_at")?,
     })
 }
@@ -705,5 +735,217 @@ pub fn share_users(conn: &Connection, a: Id, b: Id) -> HashSet<Id> {
     let mut out = HashSet::new();
     out.insert(a);
     out.insert(b);
+    out
+}
+
+// ---------------------------------------------------------------------------
+// Bots
+// ---------------------------------------------------------------------------
+
+pub fn hash_bot_token(token: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(token.as_bytes());
+    digest.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+pub fn bot_for_token(conn: &Connection, token: &str) -> Option<Id> {
+    let hash = hash_bot_token(token);
+    conn.query_row(
+        "SELECT bt.bot_id FROM bot_tokens bt JOIN users u ON u.id=bt.bot_id
+         WHERE bt.token_hash=?1 AND u.is_bot=1",
+        params![hash],
+        |r| r.get(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+}
+
+pub fn create_bot(conn: &Connection, owner: Id, display_name: &str) -> Result<(User, String), String> {
+    use rand::RngCore;
+    let name = display_name.trim();
+    if name.chars().count() < 2 || name.chars().count() > 32 {
+        return Err("Bot name must be 2-32 characters.".into());
+    }
+    let base: String = name
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    let mut username = String::new();
+    for _ in 0..10 {
+        let suffix: u16 = rand::random();
+        let candidate = format!("{base}_{:04x}", suffix);
+        if user_by_name(conn, &candidate).is_none() {
+            username = candidate;
+            break;
+        }
+    }
+    if username.is_empty() {
+        return Err("Could not allocate a bot username.".into());
+    }
+    let id = next_id(conn);
+    let color = (id.unsigned_abs() % 10) as i64;
+    conn.execute(
+        "INSERT INTO users(id, username, display_name, pass_hash, avatar_color, bio, custom_status, status, is_bot, created_at)
+         VALUES(?1,?2,?3,'',?4,'','','offline',1,?5)",
+        params![id, username, name, color, now_ms()],
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO bot_owners(owner_id, bot_id, created_at) VALUES(?1,?2,?3)",
+        params![owner, id, now_ms()],
+    )
+    .map_err(|e| e.to_string())?;
+    let mut bytes = [0u8; 32];
+    rand::rng().fill_bytes(&mut bytes);
+    let mut token = String::from("rcbot.");
+    for b in bytes {
+        token.push_str(&format!("{b:02x}"));
+    }
+    conn.execute(
+        "INSERT INTO bot_tokens(bot_id, token_hash, label, created_at) VALUES(?1,?2,?3,?4)",
+        params![id, hash_bot_token(&token), name, now_ms()],
+    )
+    .map_err(|e| e.to_string())?;
+    let user = user_by_id(conn, id).ok_or_else(|| "bot row missing".to_string())?;
+    Ok((user, token))
+}
+
+pub fn bots_owned(conn: &Connection, owner: Id) -> Vec<User> {
+    let mut out = Vec::new();
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT u.* FROM users u JOIN bot_owners b ON b.bot_id=u.id
+         WHERE b.owner_id=?1 AND u.is_bot=1 ORDER BY u.created_at",
+    ) {
+        if let Ok(rows) = stmt.query_map(params![owner], user_from_row) {
+            out.extend(rows.flatten());
+        }
+    }
+    out
+}
+
+pub fn delete_bot(conn: &Connection, owner: Id, bot: Id) -> bool {
+    let owned: bool = conn
+        .query_row(
+            "SELECT 1 FROM bot_owners WHERE owner_id=?1 AND bot_id=?2",
+            params![owner, bot],
+            |_| Ok(()),
+        )
+        .optional()
+        .ok()
+        .flatten()
+        .is_some();
+    if !owned {
+        return false;
+    }
+    conn.execute("DELETE FROM bot_tokens WHERE bot_id=?1", params![bot]).ok();
+    conn.execute("DELETE FROM bot_owners WHERE bot_id=?1", params![bot]).ok();
+    conn.execute("DELETE FROM guild_members WHERE user_id=?1", params![bot]).ok();
+    conn.execute("DELETE FROM member_roles WHERE user_id=?1", params![bot]).ok();
+    conn.execute("DELETE FROM relationships WHERE user_id=?1 OR other_id=?1", params![bot]).ok();
+    conn.execute("DELETE FROM dm_members WHERE user_id=?1", params![bot]).ok();
+    // Keep the user row so its message history still resolves an author; revoking the token
+    // makes further bot logins impossible.
+    true
+}
+
+pub fn add_bot_to_guild(conn: &Connection, bot: Id, guild: Id) -> bool {
+    conn.execute(
+        "INSERT OR IGNORE INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(?1,?2,'',?3)",
+        params![guild, bot, now_ms()],
+    )
+    .is_ok()
+}
+
+// ---------------------------------------------------------------------------
+// Message windows (Discord `before` / `after` / `around` semantics)
+// ---------------------------------------------------------------------------
+
+pub fn list_messages_window(
+    conn: &Connection,
+    channel: Id,
+    me: Id,
+    before: Option<Id>,
+    after: Option<Id>,
+    around: Option<Id>,
+    limit: u32,
+) -> Vec<Message> {
+    let limit = limit.clamp(1, 100);
+    let mut ids: Vec<Id> = Vec::new();
+    if let Some(after) = after {
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT id FROM messages WHERE channel_id=?1 AND id>?2 ORDER BY id ASC LIMIT ?3",
+        ) {
+            if let Ok(rows) = stmt.query_map(params![channel, after, limit], |r| r.get::<_, Id>(0)) {
+                ids.extend(rows.flatten());
+            }
+        }
+    } else if let Some(around) = around {
+        let half = limit / 2 + 1;
+        let mut older: Vec<Id> = Vec::new();
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT id FROM messages WHERE channel_id=?1 AND id<=?2 ORDER BY id DESC LIMIT ?3",
+        ) {
+            if let Ok(rows) = stmt.query_map(params![channel, around, half], |r| r.get::<_, Id>(0)) {
+                older.extend(rows.flatten());
+            }
+        }
+        older.reverse();
+        let mut newer: Vec<Id> = Vec::new();
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT id FROM messages WHERE channel_id=?1 AND id>?2 ORDER BY id ASC LIMIT ?3",
+        ) {
+            if let Ok(rows) = stmt.query_map(params![channel, around, limit / 2], |r| r.get::<_, Id>(0)) {
+                newer.extend(rows.flatten());
+            }
+        }
+        ids.extend(older);
+        ids.extend(newer);
+    } else {
+        let before = before.unwrap_or(i64::MAX);
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT id FROM messages WHERE channel_id=?1 AND id<?2 ORDER BY id DESC LIMIT ?3",
+        ) {
+            if let Ok(rows) = stmt.query_map(params![channel, before, limit], |r| r.get::<_, Id>(0)) {
+                ids.extend(rows.flatten());
+            }
+        }
+        ids.reverse();
+    }
+    ids.into_iter().filter_map(|id| message_by_id(conn, id, me)).collect()
+}
+
+pub fn list_children(conn: &Connection, guild: Id) -> Vec<Channel> {
+    let mut out = Vec::new();
+    if let Ok(mut stmt) = conn.prepare("SELECT * FROM channels WHERE guild_id=?1 ORDER BY position, id") {
+        if let Ok(rows) = stmt.query_map(params![guild], channel_from_row) {
+            out.extend(rows.flatten());
+        }
+    }
+    out
+}
+
+pub fn guild_members(conn: &Connection, guild: Id) -> Vec<Member> {
+    let mut out = Vec::new();
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT u.*, gm.nickname, gm.joined_at FROM guild_members gm JOIN users u ON u.id=gm.user_id WHERE gm.guild_id=?1",
+    ) {
+        if let Ok(rows) = stmt.query_map(params![guild], |r| {
+            let user = user_from_row(r)?;
+            Ok(Member {
+                guild_id: guild,
+                user,
+                nickname: r.get("nickname")?,
+                roles: Vec::new(),
+                joined_at: r.get("joined_at")?,
+            })
+        }) {
+            out.extend(rows.flatten());
+        }
+    }
+    for m in out.iter_mut() {
+        m.roles = member_role_ids(conn, guild, m.user.id);
+    }
     out
 }

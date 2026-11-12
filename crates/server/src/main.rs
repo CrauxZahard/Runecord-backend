@@ -1,6 +1,8 @@
 //! Runecord's local server: SQLite, HTTP API, and the WebSocket gateway.
 
 mod api;
+mod compat;
+mod ratelimit;
 mod store;
 
 use axum::extract::DefaultBodyLimit;
@@ -14,6 +16,7 @@ pub struct AppState {
     pub tx: broadcast::Sender<runecord_protocol::GatewayEvent>,
     pub online: tokio::sync::Mutex<HashMap<i64, usize>>,
     pub data_dir: PathBuf,
+    pub limits: ratelimit::RateLimiter,
 }
 
 #[tokio::main]
@@ -61,11 +64,14 @@ async fn main() {
         tx,
         online: tokio::sync::Mutex::new(HashMap::new()),
         data_dir: data.clone(),
+        limits: ratelimit::RateLimiter::new(),
     });
 
-    let app = api::router(state)
+    let app = api::router(state.clone())
+        .nest("/api/v10", compat::router(state.clone()))
         .nest_service("/uploads", tower_http::services::ServeDir::new(api::uploads_dir(&data)))
-        .layer(DefaultBodyLimit::max(48 * 1024 * 1024));
+        .layer(DefaultBodyLimit::max(48 * 1024 * 1024))
+        .layer(axum::middleware::from_fn_with_state(state.clone(), ratelimit::middleware));
 
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
     let listener = match tokio::net::TcpListener::bind(addr).await {

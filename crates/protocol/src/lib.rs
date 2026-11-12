@@ -47,6 +47,8 @@ pub struct User {
     pub bio: String,
     pub custom_status: String,
     pub status: Presence,
+    #[serde(default)]
+    pub is_bot: bool,
     pub created_at: i64,
 }
 
@@ -389,9 +391,13 @@ pub struct AuthResponse {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SendMessage {
+    #[serde(default)]
     pub content: String,
+    #[serde(default)]
     pub reply_to: Option<Id>,
+    #[serde(default)]
     pub attachment_ids: Vec<Id>,
+    #[serde(default)]
     pub nonce: String,
 }
 
