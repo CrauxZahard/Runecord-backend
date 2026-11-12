@@ -165,6 +165,7 @@ pub async fn middleware(State(state): State<Arc<AppState>>, req: Request, next: 
         Ok(info) => {
             let headers = info.headers();
             let mut response = next.run(req).await;
+            state.store.flush_if_changed();
             response.headers_mut().extend(headers);
             response
         }
