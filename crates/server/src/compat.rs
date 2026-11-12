@@ -657,7 +657,6 @@ async fn remove_member_role(
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn gateway() -> Json<Value> {
-    let port = std::env::var("RUNECORD_PORT").unwrap_or_else(|_| "47800".into());
-    Json(json!({ "url": format!("ws://127.0.0.1:{port}/gateway") }))
+async fn gateway(State(state): State<Arc<AppState>>) -> Json<Value> {
+    Json(json!({ "url": format!("ws://127.0.0.1:{}/gateway", state.port) }))
 }

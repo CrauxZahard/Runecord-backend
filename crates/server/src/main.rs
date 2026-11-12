@@ -17,6 +17,7 @@ pub struct AppState {
     pub online: tokio::sync::Mutex<HashMap<i64, usize>>,
     pub data_dir: PathBuf,
     pub limits: ratelimit::RateLimiter,
+    pub port: u16,
 }
 
 #[tokio::main]
@@ -65,6 +66,7 @@ async fn main() {
         online: tokio::sync::Mutex::new(HashMap::new()),
         data_dir: data.clone(),
         limits: ratelimit::RateLimiter::new(),
+        port,
     });
 
     let app = api::router(state.clone())
