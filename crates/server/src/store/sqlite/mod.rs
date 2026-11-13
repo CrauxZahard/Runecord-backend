@@ -31,6 +31,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0007_channel_notifications",
         include_str!("../../../../../migrations/0007_channel_notifications.sql"),
     ),
+    (
+        "0008_discovery",
+        include_str!("../../../../../migrations/0008_discovery.sql"),
+    ),
 ];
 
 /// Applies numbered migrations once each and returns the connection.
@@ -79,6 +83,7 @@ pub fn next_id(conn: &Connection) -> i64 {
 
 mod auth;
 mod bootstrap;
+mod discovery;
 mod guilds;
 mod members;
 mod messages;
@@ -90,6 +95,7 @@ mod seed;
 
 pub use auth::*;
 pub use bootstrap::*;
+pub use discovery::*;
 pub use guilds::*;
 pub use members::*;
 pub use messages::*;

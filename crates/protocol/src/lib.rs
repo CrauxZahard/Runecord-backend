@@ -182,6 +182,15 @@ pub struct GuildSummary {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct PublicGuild {
+    pub id: Id,
+    pub name: String,
+    pub icon_color: u32,
+    pub description: String,
+    pub member_count: u32,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct GuildDetail {
     pub guild: GuildSummary,
     pub channels: Vec<Channel>,

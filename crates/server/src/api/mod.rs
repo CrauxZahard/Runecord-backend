@@ -184,6 +184,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/bots", get(list_bots).post(create_bot_account))
         .route("/api/bots/{id}", delete(delete_bot_account))
         .route("/api/guilds", post(create_guild))
+        .route("/api/public-guilds", get(public_guilds))
+        .route("/api/public-guilds/{id}/join", post(join_public_guild))
         .route(
             "/api/guilds/{id}",
             get(guild_info).patch(update_guild).delete(delete_guild),

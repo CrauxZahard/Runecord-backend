@@ -365,5 +365,75 @@ pub fn seed_demo_app(conn: &Connection) {
 }
 
 // ---------------------------------------------------------------------------
+// Public discovery seed
+// ---------------------------------------------------------------------------
+
+pub fn seed_public_guild(conn: &Connection) {
+    let Some(owner) = user_by_name(conn, "maya") else {
+        return;
+    };
+    let existing: Option<Id> = conn
+        .query_row(
+            "SELECT id FROM guilds WHERE name='Rune Community'",
+            [],
+            |r| r.get(0),
+        )
+        .optional()
+        .ok()
+        .flatten();
+    if existing.is_some() {
+        return;
+    }
+    let guild = next_id(conn);
+    let everyone = next_id(conn);
+    conn.execute(
+        "INSERT INTO guilds(id, name, icon_color, owner_id, description, created_at, everyone_role_id) VALUES(?1,'Rune Community',?2,?3,'Share builds, ask questions and meet other locals.',?4,?5)",
+        params![guild, 0x23a55ai64, owner.id, now_ms(), everyone],
+    )
+    .ok();
+    conn.execute(
+        "INSERT INTO roles(id, guild_id, name, color, permissions, position, hoist, mentionable) VALUES(?1,?2,'@everyone',0,?3,0,0,0)",
+        params![everyone, guild, perm::EVERYONE as i64],
+    )
+    .ok();
+    for name in ["maya", "leo", "ana", "sam"] {
+        if let Some(user) = user_by_name(conn, name) {
+            conn.execute(
+                "INSERT OR IGNORE INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(?1,?2,'',?3)",
+                params![guild, user.id, now_ms()],
+            )
+            .ok();
+        }
+    }
+    let general = next_id(conn);
+    conn.execute(
+        "INSERT INTO channels(id, guild_id, name, kind, position, topic) VALUES(?1,?2,'general','text',0,'Introduce yourself and share what you are building.')",
+        params![general, guild],
+    )
+    .ok();
+    conn.execute(
+        "INSERT INTO channels(id, guild_id, name, kind, position, topic) VALUES(?1,?2,'showcase','text',1,'Finished projects and works in progress.')",
+        params![next_id(conn), guild],
+    )
+    .ok();
+    conn.execute(
+        "INSERT INTO channels(id, guild_id, name, kind, position, topic) VALUES(?1,?2,'Lounge','voice',2,'')",
+        params![next_id(conn), guild],
+    )
+    .ok();
+    let message = next_id(conn);
+    conn.execute(
+        "INSERT INTO messages(id, channel_id, author_id, content, timestamp) VALUES(?1,?2,?3,'Welcome to Rune Community! Say hi and show us what you are making.',?4)",
+        params![message, general, owner.id, now_ms()],
+    )
+    .ok();
+    conn.execute(
+        "UPDATE channels SET last_message_id=?1 WHERE id=?2",
+        params![message, general],
+    )
+    .ok();
+}
+
+// ---------------------------------------------------------------------------
 // Bots
 // ---------------------------------------------------------------------------

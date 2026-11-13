@@ -87,6 +87,7 @@ async fn main() {
     };
     let _ = store::seed_demo(&store.conn(), Some("nova"));
     store::seed_demo_app(&store.conn());
+    store::seed_public_guild(&store.conn());
     store.flush_now();
 
     let (tx, _) = broadcast::channel(1024);

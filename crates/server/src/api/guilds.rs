@@ -102,6 +102,46 @@ pub(crate) async fn leave_guild(
     Ok(Json(json!({ "ok": true })))
 }
 
+pub(crate) async fn public_guilds(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<PublicGuild>>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    Ok(Json(store::public_guilds(&conn, me)))
+}
+
+pub(crate) async fn join_public_guild(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild): Path<Id>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    if !store::discoverable(&conn, guild) {
+        return Err(not_found());
+    }
+    let already = store::guild_member(&conn, guild, me);
+    if !already {
+        store::join_public_guild(&conn, guild, me);
+    }
+    let count: u32 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM guild_members WHERE guild_id=?1",
+            params![guild],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap_or(0) as u32;
+    drop(conn);
+    let _ = state.tx.send(GatewayEvent::MemberCountUpdate {
+        guild_id: guild,
+        count,
+    });
+    Ok(Json(
+        json!({ "ok": true, "guild_id": guild, "joined": !already }),
+    ))
+}
+
 pub(crate) async fn create_guild(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,

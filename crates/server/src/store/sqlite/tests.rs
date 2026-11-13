@@ -169,6 +169,36 @@ fn guild_commands_include_installed_app() {
 }
 
 #[test]
+fn public_directory_excludes_joined_servers() {
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    conn.execute(
+        "INSERT INTO users(id, username, display_name, pass_hash, created_at) VALUES(1,'me','Me','x',1)",
+        [],
+    )
+    .unwrap();
+    for (id, name) in [(1, "Joined"), (2, "Open"), (3, "Hidden")] {
+        conn.execute(
+            "INSERT INTO guilds(id, name, icon_color, owner_id, description, created_at, everyone_role_id, discoverable) VALUES(?1,?2,0,1,'',1,0,?3)",
+            params![id, name, if id == 3 { 0 } else { 1 }],
+        )
+        .unwrap();
+    }
+    conn.execute(
+        "INSERT INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(1,1,'',1)",
+        [],
+    )
+    .unwrap();
+    let open = public_guilds(&conn, 1);
+    assert_eq!(open.len(), 1);
+    assert_eq!(open[0].name, "Open");
+    assert!(join_public_guild(&conn, 2, 1));
+    assert!(guild_member(&conn, 2, 1));
+    assert!(public_guilds(&conn, 1).is_empty());
+    assert!(!join_public_guild(&conn, 3, 1));
+}
+
+#[test]
 fn muted_channels_hide_unread_and_mentions_only_counts_mentions() {
     let conn = Connection::open_in_memory().expect("memory db");
     migrate(&conn).expect("migrate");
