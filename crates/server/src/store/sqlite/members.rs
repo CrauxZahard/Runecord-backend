@@ -292,3 +292,19 @@ pub fn leave_guild(conn: &Connection, guild: Id, user: Id) {
     )
     .ok();
 }
+
+/// Guilds that both users belong to.
+pub fn shared_guilds(conn: &Connection, a: Id, b: Id) -> Vec<Id> {
+    let mut out = Vec::new();
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT x.guild_id FROM guild_members x
+         JOIN guild_members y ON x.guild_id = y.guild_id
+         WHERE x.user_id = ?1 AND y.user_id = ?2
+         ORDER BY x.guild_id",
+    ) {
+        if let Ok(rows) = stmt.query_map(params![a, b], |r| r.get::<_, Id>(0)) {
+            out.extend(rows.flatten());
+        }
+    }
+    out
+}

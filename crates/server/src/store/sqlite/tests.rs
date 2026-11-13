@@ -263,6 +263,51 @@ fn public_directory_excludes_joined_servers() {
 }
 
 #[test]
+fn pronouns_and_shared_guilds_round_trip() {
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    conn.execute(
+        "INSERT INTO users(id, username, display_name, pass_hash, created_at, pronouns) VALUES(1,'nova','Nova','x',1,'she/her')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO users(id, username, display_name, pass_hash, created_at) VALUES(2,'maya','Maya','x',1)",
+        [],
+    )
+    .unwrap();
+    for guild in 1..=2 {
+        conn.execute(
+            "INSERT INTO guilds(id, name, icon_color, owner_id, description, created_at, everyone_role_id) VALUES(?1,?2,0,1,'',1,10)",
+            params![guild, format!("Guild {guild}")],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(?1,1,'',1)",
+            params![guild],
+        )
+        .unwrap();
+    }
+    conn.execute(
+        "INSERT INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(1,2,'',1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(2,2,'',1)",
+        [],
+    )
+    .unwrap();
+
+    let user = user_by_id(&conn, 1).expect("user");
+    assert_eq!(user.pronouns, "she/her");
+    assert_eq!(user_by_id(&conn, 2).expect("user").pronouns, "");
+
+    assert_eq!(shared_guilds(&conn, 1, 2), vec![1, 2]);
+    assert!(shared_guilds(&conn, 1, 99).is_empty());
+}
+
+#[test]
 fn banner_perk_unlocks_at_level_two() {
     assert!(!banner_unlocked(0));
     assert!(!banner_unlocked(1));

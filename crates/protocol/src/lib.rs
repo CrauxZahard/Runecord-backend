@@ -59,6 +59,8 @@ pub struct User {
     pub banner_color: u32,
     pub bio: String,
     pub custom_status: String,
+    #[serde(default)]
+    pub pronouns: String,
     pub status: Presence,
     #[serde(default)]
     pub is_bot: bool,
@@ -693,6 +695,8 @@ pub struct SearchResults {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct UpdateProfile {
     pub display_name: Option<String>,
+    #[serde(default)]
+    pub pronouns: Option<String>,
     pub avatar_color: Option<u32>,
     #[serde(default)]
     pub avatar_border: Option<u32>,

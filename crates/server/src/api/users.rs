@@ -105,6 +105,7 @@ pub(crate) struct MeBody {
     banner_color: Option<u32>,
     bio: Option<String>,
     custom_status: Option<String>,
+    pronouns: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -166,6 +167,20 @@ pub(crate) async fn change_password(
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
+pub(crate) async fn mutual_guilds(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(user): Path<Id>,
+) -> Result<Json<Vec<GuildSummary>>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    let guilds = store::shared_guilds(&conn, me, user)
+        .into_iter()
+        .filter_map(|guild| store::guild_summary(&conn, guild, me))
+        .collect();
+    Ok(Json(guilds))
+}
+
 pub(crate) async fn update_me(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -191,6 +206,13 @@ pub(crate) async fn update_me(
         conn.execute(
             "UPDATE users SET avatar_border=?1 WHERE id=?2",
             params![border as i64, me],
+        )
+        .map_err(internal)?;
+    }
+    if let Some(pronouns) = body.pronouns {
+        conn.execute(
+            "UPDATE users SET pronouns=?1 WHERE id=?2",
+            params![pronouns.trim().chars().take(40).collect::<String>(), me],
         )
         .map_err(internal)?;
     }

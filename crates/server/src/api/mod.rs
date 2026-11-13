@@ -180,6 +180,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/me/privacy", post(update_privacy))
         .route("/api/users/{id}", get(get_user))
         .route("/api/users/lookup", get(lookup_users))
+        .route("/api/users/{id}/mutuals", get(mutual_guilds))
         .route("/api/users/batch", post(get_users_batch))
         .route("/api/read", post(update_read))
         .route("/api/bots", get(list_bots).post(create_bot_account))
