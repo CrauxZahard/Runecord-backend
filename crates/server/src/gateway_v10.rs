@@ -610,6 +610,29 @@ fn dispatch(
             }
             Some(("GUILD_DELETE".into(), json!({ "id": guild_id.to_string() })))
         }
+        GatewayEvent::RoleCreate(role) | GatewayEvent::RoleUpdate(role) => {
+            if intents & INTENT_GUILDS == 0 || !member(&conn, role.guild_id, user) {
+                return None;
+            }
+            let name = if matches!(event, GatewayEvent::RoleCreate(_)) {
+                "GUILD_ROLE_CREATE"
+            } else {
+                "GUILD_ROLE_UPDATE"
+            };
+            Some((name.into(), serde_json::to_value(role).ok()?))
+        }
+        GatewayEvent::RoleDelete { guild_id, role_id } => {
+            if intents & INTENT_GUILDS == 0 || !member(&conn, *guild_id, user) {
+                return None;
+            }
+            Some((
+                "GUILD_ROLE_DELETE".into(),
+                json!({
+                    "guild_id": guild_id.to_string(),
+                    "role_id": role_id.to_string(),
+                }),
+            ))
+        }
         GatewayEvent::MemberUpdate(m) => {
             if intents & INTENT_GUILD_MEMBERS == 0 || !member(&conn, m.guild_id, user) {
                 return None;

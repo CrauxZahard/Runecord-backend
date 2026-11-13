@@ -44,6 +44,10 @@ pub(crate) async fn create_role(
             store::role_from_row,
         )
         .map_err(internal)?;
+    drop(conn);
+    let _ = state
+        .tx
+        .send(GatewayEvent::RoleCreate(Box::new(role.clone())));
     Ok(Json(role))
 }
 
@@ -107,6 +111,13 @@ pub(crate) async fn update_role(
         )
         .ok();
     }
+    if let Some(position) = body.position {
+        conn.execute(
+            "UPDATE roles SET position=?1 WHERE id=?2 AND guild_id=?3 AND name<>'@everyone'",
+            params![position, role, guild],
+        )
+        .ok();
+    }
     let out = conn
         .query_row(
             "SELECT * FROM roles WHERE id=?1",
@@ -114,6 +125,10 @@ pub(crate) async fn update_role(
             store::role_from_row,
         )
         .map_err(internal)?;
+    drop(conn);
+    let _ = state
+        .tx
+        .send(GatewayEvent::RoleUpdate(Box::new(out.clone())));
     Ok(Json(out))
 }
 
@@ -141,5 +156,20 @@ pub(crate) async fn delete_role(
         params![role, guild],
     )
     .ok();
+    conn.execute(
+        "DELETE FROM member_roles WHERE guild_id=?1 AND role_id=?2",
+        params![guild, role],
+    )
+    .ok();
+    conn.execute(
+        "DELETE FROM overwrites WHERE target_id=?1 AND target_kind='role' AND channel_id IN (SELECT id FROM channels WHERE guild_id=?2)",
+        params![role, guild],
+    )
+    .ok();
+    drop(conn);
+    let _ = state.tx.send(GatewayEvent::RoleDelete {
+        guild_id: guild,
+        role_id: role,
+    });
     Ok(Json(json!({ "ok": true })))
 }

@@ -652,6 +652,8 @@ pub struct RoleUpdate {
     pub permissions: Option<u64>,
     pub hoist: Option<bool>,
     pub mentionable: Option<bool>,
+    #[serde(default)]
+    pub position: Option<i32>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -695,6 +697,12 @@ pub enum GatewayEvent {
     GuildUpdate(Box<Guild>),
     GuildDelete {
         guild_id: Id,
+    },
+    RoleCreate(Box<Role>),
+    RoleUpdate(Box<Role>),
+    RoleDelete {
+        guild_id: Id,
+        role_id: Id,
     },
     MemberUpdate(Box<Member>),
     MemberRemove {

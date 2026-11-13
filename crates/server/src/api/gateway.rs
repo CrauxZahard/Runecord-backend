@@ -67,6 +67,10 @@ pub(crate) fn gateway_event_visible(state: &AppState, me: Id, event: &GatewayEve
             store::guild_member(&conn, g.id, me)
         }
         GatewayEvent::GuildDelete { .. } => true,
+        GatewayEvent::RoleCreate(role) | GatewayEvent::RoleUpdate(role) => {
+            store::guild_member(&conn, role.guild_id, me)
+        }
+        GatewayEvent::RoleDelete { guild_id, .. } => store::guild_member(&conn, *guild_id, me),
         GatewayEvent::MemberUpdate(m) => store::guild_member(&conn, m.guild_id, me),
         GatewayEvent::MemberRemove { guild_id, .. }
         | GatewayEvent::MemberCountUpdate { guild_id, .. }
