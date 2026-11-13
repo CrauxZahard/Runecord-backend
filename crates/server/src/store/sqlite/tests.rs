@@ -263,6 +263,38 @@ fn public_directory_excludes_joined_servers() {
 }
 
 #[test]
+fn profile_badges_and_decoration_round_trip() {
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    conn.execute(
+        "INSERT INTO users(id, username, display_name, pass_hash, created_at) VALUES(1,'nova','Nova','x',1)",
+        [],
+    )
+    .unwrap();
+    let user = user_by_id(&conn, 1).expect("user");
+    assert!(user.badges.is_empty());
+    assert!(user.avatar_decoration.is_empty());
+
+    conn.execute(
+        "UPDATE users SET badges='staff,nitro,early_supporter', avatar_decoration='aurora' WHERE id=1",
+        [],
+    )
+    .unwrap();
+    let user = user_by_id(&conn, 1).expect("user");
+    assert_eq!(user.badges, vec!["staff", "nitro", "early_supporter"]);
+    assert_eq!(user.avatar_decoration, "aurora");
+
+    conn.execute(
+        "UPDATE users SET badges='', avatar_decoration='' WHERE id=1",
+        [],
+    )
+    .unwrap();
+    let user = user_by_id(&conn, 1).expect("user");
+    assert!(user.badges.is_empty());
+    assert!(user.avatar_decoration.is_empty());
+}
+
+#[test]
 fn user_profile_images_round_trip() {
     let conn = Connection::open_in_memory().expect("memory db");
     migrate(&conn).expect("migrate");

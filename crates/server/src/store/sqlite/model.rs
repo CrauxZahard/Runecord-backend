@@ -50,6 +50,15 @@ pub fn user_from_row(r: &Row<'_>) -> rusqlite::Result<User> {
         pronouns: r.get("pronouns").unwrap_or_default(),
         avatar_url: r.get("avatar_url").unwrap_or_default(),
         banner_url: r.get("banner_url").unwrap_or_default(),
+        badges: r
+            .get::<_, String>("badges")
+            .unwrap_or_default()
+            .split(',')
+            .map(str::trim)
+            .filter(|badge| !badge.is_empty())
+            .map(str::to_string)
+            .collect(),
+        avatar_decoration: r.get("avatar_decoration").unwrap_or_default(),
         status: presence_from(&r.get::<_, String>("status")?),
         is_bot: r.get::<_, i64>("is_bot").unwrap_or(0) != 0,
         created_at: r.get("created_at")?,

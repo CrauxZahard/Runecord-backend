@@ -65,6 +65,10 @@ pub struct User {
     pub avatar_url: String,
     #[serde(default)]
     pub banner_url: String,
+    #[serde(default)]
+    pub badges: Vec<String>,
+    #[serde(default)]
+    pub avatar_decoration: String,
     pub status: Presence,
     #[serde(default)]
     pub is_bot: bool,
@@ -701,6 +705,10 @@ pub struct UpdateProfile {
     pub display_name: Option<String>,
     #[serde(default)]
     pub pronouns: Option<String>,
+    #[serde(default)]
+    pub badges: Option<Vec<String>>,
+    #[serde(default)]
+    pub avatar_decoration: Option<String>,
     pub avatar_color: Option<u32>,
     #[serde(default)]
     pub avatar_border: Option<u32>,

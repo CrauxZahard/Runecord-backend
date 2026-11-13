@@ -67,6 +67,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0016_user_images",
         include_str!("../../../../../migrations/0016_user_images.sql"),
     ),
+    (
+        "0017_profile_badges",
+        include_str!("../../../../../migrations/0017_profile_badges.sql"),
+    ),
 ];
 
 /// Applies numbered migrations once each and returns the connection.

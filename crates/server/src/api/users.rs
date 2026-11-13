@@ -101,6 +101,10 @@ pub(crate) async fn get_users_batch(
 #[derive(Deserialize)]
 pub(crate) struct MeBody {
     display_name: Option<String>,
+    #[serde(default)]
+    badges: Option<Vec<String>>,
+    #[serde(default)]
+    avatar_decoration: Option<String>,
     avatar_color: Option<u32>,
     avatar_border: Option<u32>,
     banner_color: Option<u32>,
@@ -207,6 +211,24 @@ pub(crate) async fn update_me(
         conn.execute(
             "UPDATE users SET avatar_border=?1 WHERE id=?2",
             params![border as i64, me],
+        )
+        .map_err(internal)?;
+    }
+    if let Some(badges) = body.badges {
+        let clean = badges
+            .into_iter()
+            .map(|badge| badge.trim().to_string())
+            .filter(|badge| !badge.is_empty() && badge.len() <= 32)
+            .take(8)
+            .collect::<Vec<_>>()
+            .join(",");
+        conn.execute("UPDATE users SET badges=?1 WHERE id=?2", params![clean, me])
+            .map_err(internal)?;
+    }
+    if let Some(decoration) = body.avatar_decoration {
+        conn.execute(
+            "UPDATE users SET avatar_decoration=?1 WHERE id=?2",
+            params![decoration.trim().chars().take(32).collect::<String>(), me],
         )
         .map_err(internal)?;
     }
