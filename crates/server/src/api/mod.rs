@@ -247,6 +247,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/friends/{id}/block", post(friend_block))
         .route("/api/dms/{id}", post(open_dm))
         .route("/gateway", get(gateway))
+        .route("/voice", get(voice_socket))
         .route("/gateway/v1", get(crate::gateway_v10::handler))
         .with_state(state)
 }
@@ -264,6 +265,7 @@ mod misc;
 mod roles;
 mod social;
 mod users;
+mod voice;
 
 pub(crate) use auth::*;
 pub(crate) use bots::*;
@@ -278,3 +280,4 @@ pub(crate) use misc::*;
 pub(crate) use roles::*;
 pub(crate) use social::*;
 pub(crate) use users::*;
+pub(crate) use voice::*;

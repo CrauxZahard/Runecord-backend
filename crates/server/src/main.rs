@@ -24,6 +24,8 @@ pub struct AppState {
     pub port: u16,
     pub v10: gateway_v10::Sessions,
     pub voice: std::sync::Mutex<HashMap<i64, runecord_protocol::VoiceState>>,
+    pub voice_rooms:
+        tokio::sync::Mutex<HashMap<i64, Vec<(i64, tokio::sync::mpsc::UnboundedSender<Vec<u8>>)>>>,
     pub interactions: std::sync::Mutex<HashMap<String, PendingInteraction>>,
     pub guild_cache: std::sync::Mutex<
         cache::BoundedCache<(i64, i64, i64), std::sync::Arc<runecord_protocol::GuildDetail>>,
@@ -102,6 +104,7 @@ async fn main() {
         port,
         v10: gateway_v10::Sessions::new(),
         voice: std::sync::Mutex::new(HashMap::new()),
+        voice_rooms: tokio::sync::Mutex::new(HashMap::new()),
         interactions: std::sync::Mutex::new(HashMap::new()),
         guild_cache: std::sync::Mutex::new(cache::BoundedCache::new(
             cache::GUILD_CACHE_ENTRIES,
