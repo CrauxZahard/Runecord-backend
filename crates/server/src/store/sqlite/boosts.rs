@@ -39,6 +39,11 @@ pub fn boost_level(boosts: u32) -> u32 {
     }
 }
 
+/// Discord unlocks server banners at Level 2 (7 Boosts).
+pub fn banner_unlocked(level: u32) -> bool {
+    level >= 2
+}
+
 pub fn boost_guild(conn: &Connection, guild: Id, user: Id) -> bool {
     conn.execute(
         "INSERT OR IGNORE INTO guild_boosts(guild_id, user_id, created_at) VALUES(?1,?2,?3)",

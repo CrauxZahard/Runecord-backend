@@ -5,7 +5,7 @@ use crate::{AppState, store};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
-use axum::http::HeaderMap;
+use axum::http::{HeaderMap, StatusCode};
 use rusqlite::{OptionalExtension, params};
 use serde::Deserialize;
 use serde_json::json;
@@ -497,6 +497,15 @@ async fn set_guild_image(
         perm::MANAGE_GUILD,
     ) {
         return Err(forbidden());
+    }
+    if !icon {
+        let level = store::boost_level(store::boost_count(&conn, guild));
+        if !store::banner_unlocked(level) {
+            return Err(ApiError(
+                StatusCode::FORBIDDEN,
+                "Server banners unlock at Boost Level 2 (7 Boosts).".into(),
+            ));
+        }
     }
     let limit = if icon { ICON_LIMIT } else { BANNER_LIMIT };
     if body.is_empty() {

@@ -263,6 +263,14 @@ fn public_directory_excludes_joined_servers() {
 }
 
 #[test]
+fn banner_perk_unlocks_at_level_two() {
+    assert!(!banner_unlocked(0));
+    assert!(!banner_unlocked(1));
+    assert!(banner_unlocked(2));
+    assert!(banner_unlocked(3));
+}
+
+#[test]
 fn guild_images_survive_and_reach_the_summary() {
     let conn = Connection::open_in_memory().expect("memory db");
     migrate(&conn).expect("migrate");
