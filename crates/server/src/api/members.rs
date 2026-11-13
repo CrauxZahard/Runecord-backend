@@ -21,6 +21,8 @@ pub(crate) struct MembersQuery {
     role_id: Option<Id>,
     #[serde(default)]
     status: Option<String>,
+    #[serde(default)]
+    channel_id: Option<Id>,
 }
 
 pub(crate) async fn list_guild_members(
@@ -40,10 +42,20 @@ pub(crate) async fn list_guild_members(
     ) {
         return Err(forbidden());
     }
+    if let Some(channel) = query.channel_id {
+        let target = store::channel_by_id(&conn, channel).ok_or_else(not_found)?;
+        if target.guild_id != Some(guild) {
+            return Err(not_found());
+        }
+        if !store::can_view(&conn, channel, me) {
+            return Err(forbidden());
+        }
+    }
     let page = store::members_page(
         &conn,
         guild,
         me,
+        query.channel_id,
         query.offset.unwrap_or(0),
         query.limit.unwrap_or(100),
         query.q.as_deref().unwrap_or(""),

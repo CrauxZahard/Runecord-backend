@@ -113,6 +113,7 @@ pub fn members_page(
     conn: &Connection,
     guild_id: Id,
     me: Id,
+    channel: Option<Id>,
     offset: u32,
     limit: u32,
     query: &str,
@@ -130,7 +131,12 @@ pub fn members_page(
         "online" | "offline" | "idle" | "dnd" => status,
         _ => "all",
     };
-    let all_visible = everyone_can_view(conn, guild_id) || summary.owner_id == me;
+    let all_visible =
+        channel.is_none() && (everyone_can_view(conn, guild_id) || summary.owner_id == me);
+    let can_see = |user: Id| match channel {
+        Some(channel) => can_view(conn, channel, user),
+        None => base_permissions(conn, guild_id, user) & perm::VIEW_CHANNEL != 0,
+    };
 
     let mut members = Vec::new();
     let mut raw_count = 0u32;
@@ -164,16 +170,13 @@ pub fn members_page(
         member.roles = roles.get(&member.user.id).cloned().unwrap_or_default();
     }
     if !all_visible {
-        members.retain(|member| {
-            base_permissions(conn, guild_id, member.user.id) & perm::VIEW_CHANNEL != 0
-        });
+        members.retain(|member| can_see(member.user.id));
     }
 
     let total = if all_visible {
         member_count(conn, guild_id, &like, role, status)
     } else {
-        // Rare path: the @everyone role cannot view members, so count the
-        // filtered set instead of returning a misleading total.
+        // Count the filtered set instead of returning a misleading total.
         let mut matched = 0u32;
         if let Ok(mut stmt) = conn.prepare(sql) {
             if let Ok(rows) = stmt
@@ -182,7 +185,7 @@ pub fn members_page(
                 })
             {
                 for user in rows.flatten() {
-                    if base_permissions(conn, guild_id, user) & perm::VIEW_CHANNEL != 0 {
+                    if can_see(user) {
                         matched += 1;
                     }
                 }

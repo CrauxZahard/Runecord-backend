@@ -42,6 +42,58 @@ fn dm_channels_carry_send_permissions() {
 }
 
 #[test]
+fn channel_member_pages_hide_denied_members() {
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    conn.execute(
+        "INSERT INTO guilds(id, name, icon_color, owner_id, description, created_at, everyone_role_id) VALUES(1,'Guild',0,1,'',1,1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO roles(id, guild_id, name, color, permissions, position, hoist, mentionable) VALUES(1,1,'@everyone',0,?1,0,0,1)",
+        params![perm::EVERYONE as i64],
+    )
+    .unwrap();
+    for id in 1..=3 {
+        conn.execute(
+            "INSERT INTO users(id, username, display_name, pass_hash, created_at) VALUES(?1,?2,?2,'x',1)",
+            params![id, format!("user{id}")],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(1,?1,'',?1)",
+            params![id],
+        )
+        .unwrap();
+    }
+    conn.execute(
+        "INSERT INTO channels(id, guild_id, name, kind, topic) VALUES(10,1,'secret','text','')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO overwrites(channel_id, target_id, target_kind, allow, deny) VALUES(10,3,'member',0,?1)",
+        params![perm::VIEW_CHANNEL as i64],
+    )
+    .unwrap();
+
+    let channel_page =
+        members_page(&conn, 1, 1, Some(10), 0, 100, "", 0, "all").expect("channel page");
+    assert_eq!(channel_page.total, 2);
+    assert_eq!(channel_page.members.len(), 2);
+    assert!(
+        !channel_page
+            .members
+            .iter()
+            .any(|member| member.user.id == 3)
+    );
+
+    let guild_page = members_page(&conn, 1, 1, None, 0, 100, "", 0, "all").expect("guild page");
+    assert_eq!(guild_page.total, 3);
+}
+
+#[test]
 fn guild_commands_include_installed_app() {
     let conn = Connection::open_in_memory().expect("memory db");
     migrate(&conn).expect("migrate");
@@ -130,14 +182,14 @@ fn member_pages_do_not_load_every_member() {
     tx.commit().unwrap();
 
     let started = std::time::Instant::now();
-    let page = members_page(&conn, 1, 1, 0, 100, "", 0, "all").expect("page");
+    let page = members_page(&conn, 1, 1, None, 0, 100, "", 0, "all").expect("page");
     let elapsed = started.elapsed();
     assert_eq!(page.members.len(), 100);
     assert_eq!(page.total, 10_001);
     assert_eq!(page.next_offset, Some(100));
     assert!(elapsed.as_millis() < 250, "page took {elapsed:?}");
 
-    let searched = members_page(&conn, 1, 1, 0, 50, "User 9999", 0, "all").expect("search");
+    let searched = members_page(&conn, 1, 1, None, 0, 50, "User 9999", 0, "all").expect("search");
     assert_eq!(searched.members.len(), 1);
 
     let summary = guild_summary(&conn, 1, 1).expect("summary");
