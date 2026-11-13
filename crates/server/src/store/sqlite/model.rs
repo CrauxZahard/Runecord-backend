@@ -73,6 +73,7 @@ pub fn channel_from_row(r: &Row<'_>) -> rusqlite::Result<Channel> {
         _ => ChannelKind::Text,
     };
     let thread_parent: Option<Id> = r.get("thread_parent_id")?;
+    let guild_id: Option<Id> = r.get("guild_id")?;
     let thread = if kind == ChannelKind::Thread {
         let parent = thread_parent.unwrap_or(0);
         Some(ThreadInfo {
@@ -86,7 +87,7 @@ pub fn channel_from_row(r: &Row<'_>) -> rusqlite::Result<Channel> {
     };
     Ok(Channel {
         id: r.get("id")?,
-        guild_id: r.get("guild_id")?,
+        guild_id,
         name: r.get("name")?,
         kind,
         position: r.get::<_, i64>("position")? as i32,
@@ -97,7 +98,11 @@ pub fn channel_from_row(r: &Row<'_>) -> rusqlite::Result<Channel> {
         last_message_id: r.get("last_message_id")?,
         owner_id: r.get("owner_id")?,
         thread,
-        my_permissions: 0,
+        my_permissions: if guild_id.is_none() {
+            perm::EVERYONE
+        } else {
+            0
+        },
     })
 }
 

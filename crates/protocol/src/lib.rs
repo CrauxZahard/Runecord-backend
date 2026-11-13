@@ -611,6 +611,10 @@ pub struct SearchResults {
 pub struct UpdateProfile {
     pub display_name: Option<String>,
     pub avatar_color: Option<u32>,
+    #[serde(default)]
+    pub avatar_border: Option<u32>,
+    #[serde(default)]
+    pub banner_color: Option<u32>,
     pub bio: Option<String>,
     pub custom_status: Option<String>,
 }

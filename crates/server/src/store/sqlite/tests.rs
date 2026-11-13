@@ -2,7 +2,44 @@
 
 use super::*;
 
-use super::*;
+#[test]
+fn dm_channels_carry_send_permissions() {
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    for id in 1..=2 {
+        conn.execute(
+            "INSERT INTO users(id, username, display_name, pass_hash, created_at) VALUES(?1,?2,?2,'x',1)",
+            params![id, format!("user{id}")],
+        )
+        .unwrap();
+    }
+    conn.execute(
+        "INSERT INTO channels(id, guild_id, name, kind, topic) VALUES(900,NULL,'','dm','')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO dm_members(channel_id,user_id) VALUES(900,1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO dm_members(channel_id,user_id) VALUES(900,2)",
+        [],
+    )
+    .unwrap();
+
+    let channel = channel_by_id(&conn, 900).expect("dm channel");
+    assert!(has(channel.my_permissions, perm::SEND_MESSAGES));
+    assert!(can_send(&conn, 900, 1));
+    assert!(can_send(&conn, 900, 2));
+    assert!(
+        bootstrap(&conn, 1)
+            .dms
+            .iter()
+            .any(|dm| dm.channel.id == 900 && has(dm.channel.my_permissions, perm::SEND_MESSAGES))
+    );
+}
 
 #[test]
 fn member_pages_do_not_load_every_member() {

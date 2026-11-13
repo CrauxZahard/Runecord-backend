@@ -102,7 +102,7 @@ pub fn seed_demo(conn: &Connection, me_hint: Option<&str>) -> Option<String> {
         (maya, "morning! did the new sidebar land?", 310),
         (
             nova,
-            "yeah â€” it's built in Rune now. 120 fps and the whole client is ~9 MB of RAM",
+            "yeah — it's built in Rune now. 120 fps and the whole client is ~9 MB of RAM",
             308,
         ),
         (maya, "nine. megabytes.", 306),
@@ -125,7 +125,7 @@ pub fn seed_demo(conn: &Connection, me_hint: Option<&str>) -> Option<String> {
         ),
         (
             priya,
-            "just joined â€” is there a channel for keyboard shortcuts?",
+            "just joined — is there a channel for keyboard shortcuts?",
             90,
         ),
         (
@@ -151,7 +151,7 @@ pub fn seed_demo(conn: &Connection, me_hint: Option<&str>) -> Option<String> {
         &mut mid,
         201,
         bot,
-        "Welcome to **Rune Lounge** â€” read the rules, pick a role, and say hi in #general.",
+        "Welcome to **Rune Lounge** — read the rules, pick a role, and say hi in #general.",
         t - 86_400_000,
         Some(nova),
     );
@@ -303,7 +303,7 @@ pub(crate) fn insert_message(
     )
     .ok();
     if content.contains("```rust") || content.contains("clean") {
-        for emoji in ["ðŸ”¥", "ðŸ‘€"] {
+        for emoji in ["🔥", "👀"] {
             conn.execute(
                 "INSERT OR IGNORE INTO reactions(message_id, emoji, user_id) VALUES(?1,?2,?3)",
                 params![id, emoji, author],
