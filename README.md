@@ -73,7 +73,7 @@ There is no external cache and no Redis. One process serves accounts on loopback
 
 ## API surface
 
-`POST /api/register`, `/api/login`, `/api/logout` · `GET /api/bootstrap` · `PATCH /api/me` · `POST /api/me/password` · `POST /api/me/privacy` · `GET /api/users/lookup?q=` · guilds/channels/messages/reactions/pins/threads · kick/ban/timeout, ban list and unban · leave server · channel notification levels · public server directory and join · server discoverability · friends/DMs · invites · roles · bots · applications/install links/commands · guild commands · interactions · guild emojis · audit logs · uploads · `GET /gateway` and `/voice` (WebSockets).
+`POST /api/register`, `/api/login`, `/api/logout` · `GET /api/bootstrap` · `PATCH /api/me` · `POST /api/me/password` · `POST /api/me/privacy` · `GET /api/users/lookup?q=` · guilds/channels/messages/reactions/pins/threads · server overview edit · kick/ban/timeout, ban list and unban · leave server · channel notification levels · public server directory and join · server discoverability · friends/DMs · invites · roles · bots · applications/install links/commands · guild commands · interactions · guild emojis · audit logs · uploads · `GET /gateway` and `/voice` (WebSockets).
 
 ### Bot accounts
 

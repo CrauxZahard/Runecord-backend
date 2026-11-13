@@ -618,6 +618,8 @@ pub struct UpdateGuild {
     pub description: Option<String>,
     #[serde(default)]
     pub tag: Option<String>,
+    #[serde(default)]
+    pub discoverable: Option<bool>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

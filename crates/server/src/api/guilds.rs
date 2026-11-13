@@ -258,26 +258,19 @@ pub(crate) async fn update_guild(
     headers: HeaderMap,
     Path(id): Path<Id>,
     Json(body): Json<UpdateGuild>,
-) -> Result<Json<Guild>, ApiError> {
+) -> Result<Json<GuildSummary>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    let owner: Option<Id> = conn
-        .query_row(
-            "SELECT owner_id FROM guilds WHERE id=?1",
-            params![id],
-            |r| r.get(0),
-        )
-        .optional()
-        .map_err(internal)?;
-    if owner != Some(me) {
+    if !has(store::base_permissions(&conn, id, me), perm::MANAGE_GUILD) {
         return Err(forbidden());
     }
     if let Some(name) = body.name {
-        conn.execute(
-            "UPDATE guilds SET name=?1 WHERE id=?2",
-            params![name.trim(), id],
-        )
-        .map_err(internal)?;
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(bad("Name the server."));
+        }
+        conn.execute("UPDATE guilds SET name=?1 WHERE id=?2", params![name, id])
+            .map_err(internal)?;
     }
     if let Some(color) = body.icon_color {
         conn.execute(
@@ -296,18 +289,34 @@ pub(crate) async fn update_guild(
     if let Some(desc) = body.description {
         conn.execute(
             "UPDATE guilds SET description=?1 WHERE id=?2",
-            params![desc, id],
+            params![desc.chars().take(500).collect::<String>(), id],
         )
         .map_err(internal)?;
     }
-    let guild = Guild {
+    if let Some(discoverable) = body.discoverable {
+        conn.execute(
+            "UPDATE guilds SET discoverable=?1 WHERE id=?2",
+            params![discoverable as i64, id],
+        )
+        .map_err(internal)?;
+    }
+    let summary = store::guild_summary_with_unread(&conn, id, me)
+        .map(|(summary, _)| summary)
+        .ok_or_else(not_found)?;
+    drop(conn);
+    let _ = state.tx.send(GatewayEvent::GuildUpdate(Box::new(Guild {
         id,
+        name: summary.name.clone(),
+        icon_color: summary.icon_color,
+        owner_id: summary.owner_id,
+        description: summary.description.clone(),
+        member_count: summary.member_count,
+        tag: summary.tag.clone(),
+        permissions: summary.permissions,
+        created_at: summary.created_at,
         ..Guild::default()
-    };
-    let _ = state
-        .tx
-        .send(GatewayEvent::GuildUpdate(Box::new(guild.clone())));
-    Ok(Json(guild))
+    })));
+    Ok(Json(summary))
 }
 
 pub(crate) async fn delete_guild(
