@@ -688,6 +688,16 @@ async fn list_emojis(
     Ok(Json(store::guild_emojis(&conn, guild)))
 }
 
+fn emoji_media(bytes: &[u8]) -> (&'static str, &'static str) {
+    if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        ("gif", "image/gif")
+    } else if bytes.len() > 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        ("webp", "image/webp")
+    } else {
+        ("png", "image/png")
+    }
+}
+
 async fn create_emoji(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -709,8 +719,8 @@ async fn create_emoji(
     if name.chars().count() < 2 || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
         return Err(bad("Emoji names are 2+ letters, numbers or underscores."));
     }
-    let ext = if q.sticker { "png" } else { "png" };
-    let url = save_cdn(&state, &bytes, &format!("{name}.{ext}"), "image/png")?;
+    let (ext, content_type) = emoji_media(&bytes);
+    let url = save_cdn(&state, &bytes, &format!("{name}.{ext}"), content_type)?;
     let conn = state.store.conn();
     let emoji = store::create_emoji(&conn, guild, me, &name, q.sticker, &url);
     store::record_audit(
@@ -842,4 +852,18 @@ async fn voice_state(
         body.self_deaf,
     )
     .map(Json)
+}
+
+#[cfg(test)]
+mod media_tests {
+    use super::emoji_media;
+
+    #[test]
+    fn emoji_media_detects_gif_and_webp() {
+        assert_eq!(emoji_media(b"GIF89a..."), ("gif", "image/gif"));
+        let mut webp = Vec::from(*b"RIFF0000WEBPVP8 ");
+        webp.extend_from_slice(b"payload");
+        assert_eq!(emoji_media(&webp), ("webp", "image/webp"));
+        assert_eq!(emoji_media(b"\x89PNG\r\n"), ("png", "image/png"));
+    }
 }
