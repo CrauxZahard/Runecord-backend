@@ -163,6 +163,31 @@ pub fn create_command(
     }
 }
 
+pub fn commands_in_guild(conn: &Connection, guild: Id) -> Vec<ApplicationCommand> {
+    let mut out = Vec::new();
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT c.id, c.app_id, c.name, c.description, c.options_json
+         FROM application_commands c
+         JOIN applications a ON a.id=c.app_id
+         JOIN guild_members m ON m.user_id=a.bot_id AND m.guild_id=?1
+         ORDER BY c.name, c.id",
+    ) {
+        if let Ok(rows) = stmt.query_map(params![guild], |r| {
+            let raw: String = r.get("options_json")?;
+            Ok(ApplicationCommand {
+                id: r.get("id")?,
+                app_id: r.get("app_id")?,
+                name: r.get("name")?,
+                description: r.get("description")?,
+                options: serde_json::from_str(&raw).unwrap_or(serde_json::Value::Array(Vec::new())),
+            })
+        }) {
+            out.extend(rows.flatten());
+        }
+    }
+    out
+}
+
 pub fn commands_for(conn: &Connection, app: Id) -> Vec<ApplicationCommand> {
     let mut out = Vec::new();
     if let Ok(mut stmt) = conn.prepare("SELECT * FROM application_commands WHERE app_id=?1") {

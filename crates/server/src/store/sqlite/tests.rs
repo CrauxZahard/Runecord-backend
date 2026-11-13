@@ -42,6 +42,33 @@ fn dm_channels_carry_send_permissions() {
 }
 
 #[test]
+fn guild_commands_include_installed_app() {
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    conn.execute(
+        "INSERT INTO users(id, username, display_name, pass_hash, created_at) VALUES(1,'owner','Owner','x',1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO guilds(id, name, icon_color, owner_id, description, created_at, everyone_role_id) VALUES(1,'Guild',0,1,'',1,0)",
+        [],
+    )
+    .unwrap();
+    let app = create_application(&conn, 1, "Test App", 0x5865f2).expect("app");
+    add_bot_to_guild(&conn, app.bot.id, 1);
+    create_command(
+        &conn,
+        app.id,
+        "ping",
+        "Ping the app",
+        &serde_json::json!({ "response": "Pong!" }),
+    );
+    let commands = commands_in_guild(&conn, 1);
+    assert!(commands.iter().any(|command| command.name == "ping"));
+}
+
+#[test]
 fn audit_pages_newest_first() {
     let conn = Connection::open_in_memory().expect("memory db");
     migrate(&conn).expect("migrate");

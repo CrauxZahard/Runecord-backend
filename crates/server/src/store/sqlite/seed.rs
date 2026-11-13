@@ -315,5 +315,55 @@ pub(crate) fn insert_message(
 }
 
 // ---------------------------------------------------------------------------
+// Demo application commands
+// ---------------------------------------------------------------------------
+
+pub fn seed_demo_app(conn: &Connection) {
+    let Some(owner) = user_by_name(conn, "nova") else {
+        return;
+    };
+    let existing: Option<Id> = conn
+        .query_row(
+            "SELECT id FROM applications WHERE owner_id=?1 AND name='Rune Tools'",
+            params![owner.id],
+            |r| r.get(0),
+        )
+        .optional()
+        .ok()
+        .flatten();
+    let app = if let Some(id) = existing {
+        let Some(app) = application_by_id(conn, id) else {
+            return;
+        };
+        app
+    } else {
+        let Ok(app) = create_application(conn, owner.id, "Rune Tools", 0x5865f2) else {
+            return;
+        };
+        app
+    };
+    add_bot_to_guild(conn, app.bot.id, 100);
+    let commands = commands_for(conn, app.id);
+    if !commands.iter().any(|command| command.name == "ping") {
+        create_command(
+            conn,
+            app.id,
+            "ping",
+            "Check that the local app is awake.",
+            &serde_json::json!({ "response": "Pong!" }),
+        );
+    }
+    if !commands.iter().any(|command| command.name == "echo") {
+        create_command(
+            conn,
+            app.id,
+            "echo",
+            "Echo the text after the command.",
+            &serde_json::json!({ "response": "Echo!" }),
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Bots
 // ---------------------------------------------------------------------------

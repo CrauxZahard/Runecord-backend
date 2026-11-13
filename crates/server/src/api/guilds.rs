@@ -48,6 +48,25 @@ pub(crate) async fn guild_info(
     Ok(Json(detail))
 }
 
+pub(crate) async fn guild_commands(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild): Path<Id>,
+) -> Result<Json<Vec<ApplicationCommand>>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    if !store::guild_member(&conn, guild, me) {
+        return Err(not_found());
+    }
+    if !has(
+        store::base_permissions(&conn, guild, me),
+        perm::VIEW_CHANNEL,
+    ) {
+        return Err(forbidden());
+    }
+    Ok(Json(store::commands_in_guild(&conn, guild)))
+}
+
 pub(crate) async fn create_guild(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
