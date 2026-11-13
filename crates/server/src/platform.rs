@@ -720,6 +720,11 @@ async fn delete_emoji(
         return Err(not_found());
     }
     store::record_audit(&conn, guild, me, 61, Some(emoji), json!([]));
+    drop(conn);
+    let _ = state.tx.send(GatewayEvent::GuildMembers {
+        guild_id: guild,
+        members: Vec::new(),
+    });
     Ok(Json(json!({ "ok": true })))
 }
 
