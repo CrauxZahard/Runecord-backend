@@ -263,6 +263,76 @@ fn public_directory_excludes_joined_servers() {
 }
 
 #[test]
+fn moderation_kick_ban_timeout_and_hierarchy() {
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    for id in 1..=3 {
+        conn.execute(
+            "INSERT INTO users(id, username, display_name, pass_hash, created_at) VALUES(?1,?2,?2,'x',1)",
+            params![id, format!("user{id}")],
+        )
+        .unwrap();
+    }
+    conn.execute(
+        "INSERT INTO guilds(id, name, icon_color, owner_id, description, created_at, everyone_role_id) VALUES(1,'Guild',0,1,'',1,10)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO roles(id, guild_id, name, color, permissions, position, hoist, mentionable) VALUES(10,1,'@everyone',0,?1,0,0,0)",
+        params![perm::EVERYONE as i64],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO roles(id, guild_id, name, color, permissions, position, hoist, mentionable) VALUES(11,1,'Moderator',0,?1,5,1,1)",
+        params![(perm::KICK_MEMBERS | perm::BAN_MEMBERS | perm::MODERATE_MEMBERS) as i64],
+    )
+    .unwrap();
+    for id in 1..=3 {
+        conn.execute(
+            "INSERT INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(1,?1,'',1)",
+            params![id],
+        )
+        .unwrap();
+    }
+    conn.execute(
+        "INSERT INTO member_roles(guild_id, user_id, role_id) VALUES(1,2,11)",
+        [],
+    )
+    .unwrap();
+
+    assert!(can_manage_member(&conn, 1, 2, 3));
+    assert!(!can_manage_member(&conn, 1, 3, 2));
+    assert!(guild_member(&conn, 1, 3));
+    assert!(kick_member(&conn, 1, 3));
+    assert!(!guild_member(&conn, 1, 3));
+
+    conn.execute(
+        "INSERT INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(1,3,'',1)",
+        [],
+    )
+    .unwrap();
+    assert!(ban_member(&conn, 1, 3, 2, "spam"));
+    assert!(is_banned(&conn, 1, 3));
+    assert!(!guild_member(&conn, 1, 3));
+    assert!(unban_member(&conn, 1, 3));
+    assert!(!is_banned(&conn, 1, 3));
+
+    conn.execute(
+        "INSERT INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(1,3,'',1)",
+        [],
+    )
+    .unwrap();
+    let until = now_ms() + 60_000;
+    assert!(timeout_member(&conn, 1, 3, until));
+    assert_eq!(member_timeout(&conn, 1, 3), until);
+    assert!(timeout_member(&conn, 1, 3, 0));
+    assert_eq!(member_timeout(&conn, 1, 3), 0);
+    let member = guild_member_detail(&conn, 1, 3).expect("member");
+    assert_eq!(member.timeout_until, 0);
+}
+
+#[test]
 fn muted_channels_hide_unread_and_mentions_only_counts_mentions() {
     let conn = Connection::open_in_memory().expect("memory db");
     migrate(&conn).expect("migrate");

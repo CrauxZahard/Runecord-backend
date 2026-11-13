@@ -148,6 +148,7 @@ pub(crate) async fn update_member(
             .unwrap_or_default(),
         roles: store::member_role_ids(&conn, guild, user),
         joined_at: now_ms(),
+        timeout_until: store::member_timeout(&conn, guild, user),
     };
     if roles_changed {
         store::record_audit(

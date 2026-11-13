@@ -19,7 +19,7 @@ pub fn guild_member(conn: &Connection, guild_id: Id, user_id: Id) -> bool {
 pub fn guild_member_detail(conn: &Connection, guild_id: Id, user_id: Id) -> Option<Member> {
     let mut member = conn
         .query_row(
-            "SELECT u.*, gm.nickname, gm.joined_at FROM guild_members gm JOIN users u ON u.id=gm.user_id WHERE gm.guild_id=?1 AND gm.user_id=?2",
+            "SELECT u.*, gm.nickname, gm.joined_at, gm.timeout_until FROM guild_members gm JOIN users u ON u.id=gm.user_id WHERE gm.guild_id=?1 AND gm.user_id=?2",
             params![guild_id, user_id],
             |r| {
                 Ok(Member {
@@ -28,6 +28,7 @@ pub fn guild_member_detail(conn: &Connection, guild_id: Id, user_id: Id) -> Opti
                     nickname: r.get("nickname")?,
                     roles: Vec::new(),
                     joined_at: r.get("joined_at")?,
+                    timeout_until: r.get::<_, i64>("timeout_until").unwrap_or(0),
                 })
             },
         )
@@ -140,7 +141,7 @@ pub fn members_page(
 
     let mut members = Vec::new();
     let mut raw_count = 0u32;
-    let sql = "SELECT u.*, gm.nickname, gm.joined_at FROM guild_members gm JOIN users u ON u.id=gm.user_id
+    let sql = "SELECT u.*, gm.nickname, gm.joined_at, gm.timeout_until FROM guild_members gm JOIN users u ON u.id=gm.user_id
         WHERE gm.guild_id=?1
           AND (?2='' OR u.username LIKE ?2 OR u.display_name LIKE ?2 OR gm.nickname LIKE ?2)
           AND (?3=0 OR EXISTS(SELECT 1 FROM member_roles mr WHERE mr.guild_id=gm.guild_id AND mr.user_id=gm.user_id AND mr.role_id=?3))
@@ -156,6 +157,7 @@ pub fn members_page(
                     nickname: r.get("nickname")?,
                     roles: Vec::new(),
                     joined_at: r.get("joined_at")?,
+                    timeout_until: r.get::<_, i64>("timeout_until").unwrap_or(0),
                 })
             })
         {

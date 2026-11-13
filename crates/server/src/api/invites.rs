@@ -100,6 +100,12 @@ pub(crate) async fn join_invite(
     let Some(guild) = guild else {
         return Err(not_found());
     };
+    if store::is_banned(&conn, guild, me) {
+        return Err(ApiError(
+            StatusCode::FORBIDDEN,
+            "You are banned from this server.".into(),
+        ));
+    }
     conn.execute("INSERT OR IGNORE INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(?1,?2,'',?3)", params![guild, me, now_ms()]).ok();
     conn.execute(
         "UPDATE invites SET uses=uses+1 WHERE code=?1",

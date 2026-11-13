@@ -147,6 +147,12 @@ pub(crate) async fn join_public_guild(
     if !store::discoverable(&conn, guild) {
         return Err(not_found());
     }
+    if !store::guild_member(&conn, guild, me) && store::is_banned(&conn, guild, me) {
+        return Err(ApiError(
+            StatusCode::FORBIDDEN,
+            "You are banned from this server.".into(),
+        ));
+    }
     let already = store::guild_member(&conn, guild, me);
     if !already {
         store::join_public_guild(&conn, guild, me);

@@ -39,6 +39,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0009_privacy",
         include_str!("../../../../../migrations/0009_privacy.sql"),
     ),
+    (
+        "0010_moderation",
+        include_str!("../../../../../migrations/0010_moderation.sql"),
+    ),
 ];
 
 /// Applies numbered migrations once each and returns the connection.
@@ -92,6 +96,7 @@ mod guilds;
 mod members;
 mod messages;
 mod model;
+mod moderation;
 mod notifications;
 mod permissions;
 mod platform;
@@ -105,6 +110,7 @@ pub use guilds::*;
 pub use members::*;
 pub use messages::*;
 pub use model::*;
+pub use moderation::*;
 pub use notifications::*;
 pub use permissions::*;
 pub use platform::*;

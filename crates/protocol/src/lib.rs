@@ -206,6 +206,14 @@ pub struct PublicGuild {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Ban {
+    pub user: User,
+    pub reason: String,
+    pub actor_id: Id,
+    pub created_at: i64,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct GuildDetail {
     pub guild: GuildSummary,
     pub channels: Vec<Channel>,
@@ -266,6 +274,8 @@ pub struct Member {
     pub nickname: String,
     pub roles: Vec<Id>,
     pub joined_at: i64,
+    #[serde(default)]
+    pub timeout_until: i64,
 }
 
 pub mod perm {
@@ -298,6 +308,7 @@ pub mod perm {
     pub const MANAGE_THREADS: u64 = 1 << 34;
     pub const CREATE_THREADS: u64 = 1 << 35;
     pub const SEND_MESSAGES_IN_THREADS: u64 = 1 << 38;
+    pub const MODERATE_MEMBERS: u64 = 1 << 40;
 
     pub const EVERYONE: u64 = VIEW_CHANNEL
         | SEND_MESSAGES

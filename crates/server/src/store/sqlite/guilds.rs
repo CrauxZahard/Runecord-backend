@@ -124,7 +124,7 @@ pub fn list_children(conn: &Connection, guild: Id) -> Vec<Channel> {
 pub fn guild_members(conn: &Connection, guild: Id) -> Vec<Member> {
     let mut out = Vec::new();
     if let Ok(mut stmt) = conn.prepare(
-        "SELECT u.*, gm.nickname, gm.joined_at FROM guild_members gm JOIN users u ON u.id=gm.user_id WHERE gm.guild_id=?1",
+        "SELECT u.*, gm.nickname, gm.joined_at, gm.timeout_until FROM guild_members gm JOIN users u ON u.id=gm.user_id WHERE gm.guild_id=?1",
     ) {
         if let Ok(rows) = stmt.query_map(params![guild], |r| {
             let user = user_from_row(r)?;
@@ -134,6 +134,7 @@ pub fn guild_members(conn: &Connection, guild: Id) -> Vec<Member> {
                 nickname: r.get("nickname")?,
                 roles: Vec::new(),
                 joined_at: r.get("joined_at")?,
+                timeout_until: r.get("timeout_until").unwrap_or(0),
             })
         }) {
             out.extend(rows.flatten());

@@ -1,4 +1,4 @@
-﻿//! HTTP API and the WebSocket gateway.
+//! HTTP API and the WebSocket gateway.
 
 use crate::{AppState, store};
 use argon2::{PasswordHash, PasswordVerifier};
@@ -203,6 +203,14 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/api/guilds/{id}/members/{user_id}",
             get(get_guild_member).patch(update_member),
         )
+        .route("/api/guilds/{id}/members/{user_id}/kick", post(kick_member))
+        .route("/api/guilds/{id}/members/{user_id}/ban", post(ban_member))
+        .route(
+            "/api/guilds/{id}/members/{user_id}/timeout",
+            post(timeout_member),
+        )
+        .route("/api/guilds/{id}/bans", get(list_bans))
+        .route("/api/guilds/{id}/bans/{user_id}", delete(unban_member))
         .route("/api/guilds/{id}/roles", get(list_roles).post(create_role))
         .route("/api/guilds/{id}/permissions", get(my_permissions))
         .route("/api/channels/{id}/permissions", get(channel_overwrites))
@@ -262,6 +270,7 @@ mod media;
 mod members;
 mod messages;
 mod misc;
+mod moderation;
 mod roles;
 mod social;
 mod users;
@@ -277,6 +286,7 @@ pub(crate) use media::*;
 pub(crate) use members::*;
 pub(crate) use messages::*;
 pub(crate) use misc::*;
+pub(crate) use moderation::*;
 pub(crate) use roles::*;
 pub(crate) use social::*;
 pub(crate) use users::*;

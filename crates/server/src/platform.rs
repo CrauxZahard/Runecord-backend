@@ -789,6 +789,12 @@ pub fn set_voice(
     ) {
         return Err(forbidden());
     }
+    if store::member_timeout(&conn, guild, user) > now_ms() {
+        return Err(ApiError(
+            StatusCode::FORBIDDEN,
+            "You are timed out and cannot join voice.".into(),
+        ));
+    }
     if let Some(ch) = channel {
         let found = store::channel_by_id(&conn, ch).ok_or_else(not_found)?;
         if found.guild_id != Some(guild) {

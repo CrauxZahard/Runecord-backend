@@ -60,6 +60,15 @@ pub(crate) async fn send_message(
         return Err(bad("Message can't be empty."));
     }
     let target = store::channel_by_id(&conn, channel).ok_or_else(not_found)?;
+    if let Some(guild) = target.guild_id {
+        let until = store::member_timeout(&conn, guild, me);
+        if until > now_ms() {
+            return Err(ApiError(
+                StatusCode::FORBIDDEN,
+                "You are timed out and cannot send messages right now.".into(),
+            ));
+        }
+    }
     if target.slowmode > 0 {
         let perms = store::channel_permissions(&conn, channel, me);
         if !has(perms, perm::MANAGE_MESSAGES) && !has(perms, perm::MANAGE_CHANNELS) {
