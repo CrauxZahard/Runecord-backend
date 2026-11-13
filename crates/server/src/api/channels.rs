@@ -10,6 +10,47 @@ use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
 
+#[derive(Deserialize)]
+pub(crate) struct ThreadPatch {
+    archived: bool,
+}
+
+pub(crate) async fn update_thread(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(channel): Path<Id>,
+    Json(body): Json<ThreadPatch>,
+) -> Result<Json<Channel>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    let target = store::channel_by_id(&conn, channel).ok_or_else(not_found)?;
+    if target.kind != ChannelKind::Thread {
+        return Err(bad("Not a thread."));
+    }
+    if !store::can_view(&conn, channel, me) {
+        return Err(forbidden());
+    }
+    let perms = store::channel_permissions(&conn, channel, me);
+    if target.owner_id != Some(me)
+        && !has(perms, perm::MANAGE_THREADS)
+        && !has(perms, perm::MANAGE_CHANNELS)
+    {
+        return Err(forbidden());
+    }
+    conn.execute(
+        "UPDATE channels SET thread_archived=?1 WHERE id=?2",
+        params![body.archived as i64, channel],
+    )
+    .map_err(internal)?;
+    let out = store::channel_by_id(&conn, channel).ok_or_else(not_found)?;
+    let out = channel_for(&conn, out, me);
+    drop(conn);
+    let _ = state
+        .tx
+        .send(GatewayEvent::ChannelUpdate(Box::new(out.clone())));
+    Ok(Json(out))
+}
+
 pub(crate) async fn create_channel(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,

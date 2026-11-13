@@ -80,7 +80,7 @@ pub fn channel_from_row(r: &Row<'_>) -> rusqlite::Result<Channel> {
             parent_id: parent,
             name: r.get("name")?,
             message_count: r.get::<_, i64>("thread_message_count")? as u32,
-            archived: false,
+            archived: r.get::<_, i64>("thread_archived").unwrap_or(0) != 0,
         })
     } else {
         None

@@ -45,6 +45,12 @@ pub(crate) fn forbidden() -> ApiError {
     )
 }
 
+/// A channel row read outside guild detail still needs the caller's permissions.
+pub(crate) fn channel_for(conn: &rusqlite::Connection, mut channel: Channel, me: Id) -> Channel {
+    channel.my_permissions = store::channel_permissions(conn, channel.id, me);
+    channel
+}
+
 pub(crate) fn not_found() -> ApiError {
     ApiError(StatusCode::NOT_FOUND, "not found".into())
 }
@@ -207,6 +213,7 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/api/channels/{id}",
             patch(update_channel).delete(delete_channel),
         )
+        .route("/api/channels/{id}/thread", patch(update_thread))
         .route(
             "/api/channels/{id}/messages",
             get(list_messages).post(send_message),

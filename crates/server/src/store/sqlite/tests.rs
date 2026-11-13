@@ -94,6 +94,54 @@ fn channel_member_pages_hide_denied_members() {
 }
 
 #[test]
+fn threads_inherit_parent_channel_permissions() {
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    conn.execute(
+        "INSERT INTO users(id, username, display_name, pass_hash, created_at) VALUES(1,'owner','Owner','x',1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO users(id, username, display_name, pass_hash, created_at) VALUES(2,'member','Member','x',1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(1,2,'',1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO guilds(id, name, icon_color, owner_id, description, created_at, everyone_role_id) VALUES(1,'Guild',0,1,'',1,1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO roles(id, guild_id, name, color, permissions, position, hoist, mentionable) VALUES(1,1,'@everyone',0,?1,0,0,1)",
+        params![perm::EVERYONE as i64],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO channels(id, guild_id, name, kind, topic) VALUES(10,1,'parent','text','')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO channels(id, guild_id, name, kind, thread_parent_id, owner_id) VALUES(11,1,'child','thread',10,1)",
+        [],
+    )
+    .unwrap();
+    assert!(has(channel_permissions(&conn, 11, 2), perm::SEND_MESSAGES));
+    conn.execute(
+        "INSERT INTO overwrites(channel_id, target_id, target_kind, allow, deny) VALUES(10,0,'role',0,?1)",
+        params![perm::SEND_MESSAGES as i64],
+    )
+    .unwrap();
+    assert!(!has(channel_permissions(&conn, 11, 2), perm::SEND_MESSAGES));
+}
+
+#[test]
 fn guild_commands_include_installed_app() {
     let conn = Connection::open_in_memory().expect("memory db");
     migrate(&conn).expect("migrate");

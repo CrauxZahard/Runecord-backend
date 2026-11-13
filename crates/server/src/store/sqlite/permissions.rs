@@ -43,7 +43,10 @@ pub fn channel_permissions(conn: &Connection, channel_id: Id, user_id: Id) -> u6
     let Some(guild_id) = channel.guild_id else {
         return u64::MAX / 2;
     };
-    let mut perms = base_permissions(conn, guild_id, user_id);
+    let mut perms = match channel.thread.as_ref() {
+        Some(info) => channel_permissions(conn, info.parent_id, user_id),
+        None => base_permissions(conn, guild_id, user_id),
+    };
     if perms & perm::ADMINISTRATOR != 0 {
         return perms;
     }
