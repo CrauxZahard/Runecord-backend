@@ -118,6 +118,7 @@ pub fn bootstrap(conn: &Connection, me: Id) -> Bootstrap {
         emojis,
         voice_states: Vec::new(),
         channel_notifications: channel_notifications_for(conn, me),
+        channel_suppress: channel_suppress_for(conn, me).into_keys().collect(),
     }
 }
 

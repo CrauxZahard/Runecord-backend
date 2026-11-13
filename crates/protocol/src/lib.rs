@@ -489,6 +489,8 @@ pub struct Bootstrap {
     pub voice_states: Vec<VoiceState>,
     #[serde(default)]
     pub channel_notifications: BTreeMap<Id, NotificationLevel>,
+    #[serde(default)]
+    pub channel_suppress: std::collections::BTreeSet<Id>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

@@ -646,6 +646,8 @@ async fn audit_logs(
 #[derive(Deserialize)]
 struct NotificationBody {
     level: NotificationLevel,
+    #[serde(default)]
+    suppress_everyone: bool,
 }
 
 async fn set_channel_notification(
@@ -659,7 +661,7 @@ async fn set_channel_notification(
     if !store::can_view(&conn, channel, me) {
         return Err(forbidden());
     }
-    store::set_channel_notification(&conn, me, channel, body.level);
+    store::set_channel_notification(&conn, me, channel, body.level, body.suppress_everyone);
     Ok(Json(json!({ "level": body.level })))
 }
 

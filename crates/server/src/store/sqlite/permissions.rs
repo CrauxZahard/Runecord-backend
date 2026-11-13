@@ -174,7 +174,12 @@ pub fn unread_for(conn: &Connection, channel_id: Id, me: Id) -> u32 {
     .unwrap_or(0) as u32
 }
 
-pub fn unread_mentions_for(conn: &Connection, channel_id: Id, me: Id) -> u32 {
+pub fn unread_mentions_for(
+    conn: &Connection,
+    channel_id: Id,
+    me: Id,
+    suppress_everyone: bool,
+) -> u32 {
     let last: Option<Id> = conn
         .query_row(
             "SELECT last_read_id FROM reads WHERE user_id=?1 AND channel_id=?2",
@@ -186,6 +191,16 @@ pub fn unread_mentions_for(conn: &Connection, channel_id: Id, me: Id) -> u32 {
         .flatten();
     let after = last.unwrap_or(0);
     let needle = format!("%<@{me}>%");
+    if suppress_everyone {
+        return conn
+            .query_row(
+                "SELECT COUNT(*) FROM messages WHERE channel_id=?1 AND id>?2 AND author_id<>?3
+                 AND content LIKE ?4",
+                params![channel_id, after, me, needle],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap_or(0) as u32;
+    }
     conn.query_row(
         "SELECT COUNT(*) FROM messages WHERE channel_id=?1 AND id>?2 AND author_id<>?3
          AND (content LIKE ?4 OR content LIKE '%@everyone%' OR content LIKE '%@here%')",

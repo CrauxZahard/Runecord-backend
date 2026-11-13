@@ -61,7 +61,8 @@ pub(crate) fn guild_unread_channels(conn: &Connection, guild_id: Id, me: Id) -> 
                         continue;
                     }
                     let count = if level == NotificationLevel::Mentions {
-                        unread_mentions_for(conn, channel, me)
+                        let suppress = channel_suppressed(conn, me, channel);
+                        unread_mentions_for(conn, channel, me, suppress)
                     } else {
                         unread_for(conn, channel, me)
                     };
