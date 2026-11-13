@@ -422,6 +422,15 @@ pub struct DmChannel {
     pub recipients: Vec<User>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum NotificationLevel {
+    #[default]
+    All,
+    Mentions,
+    None,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Bootstrap {
     pub user: User,
@@ -434,6 +443,8 @@ pub struct Bootstrap {
     pub unread: BTreeMap<Id, u32>,
     pub emojis: Vec<Emoji>,
     pub voice_states: Vec<VoiceState>,
+    #[serde(default)]
+    pub channel_notifications: BTreeMap<Id, NotificationLevel>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

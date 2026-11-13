@@ -169,6 +169,115 @@ fn guild_commands_include_installed_app() {
 }
 
 #[test]
+fn muted_channels_hide_unread_and_mentions_only_counts_mentions() {
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    for id in 1..=2 {
+        conn.execute(
+            "INSERT INTO users(id, username, display_name, pass_hash, created_at) VALUES(?1,?2,?2,'x',1)",
+            params![id, format!("user{id}")],
+        )
+        .unwrap();
+    }
+    conn.execute(
+        "INSERT INTO guilds(id, name, icon_color, owner_id, description, created_at, everyone_role_id) VALUES(1,'Guild',0,2,'',1,1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO roles(id, guild_id, name, color, permissions, position, hoist, mentionable) VALUES(1,1,'@everyone',0,?1,0,0,1)",
+        params![perm::EVERYONE as i64],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO channels(id, guild_id, name, kind, topic) VALUES(10,1,'general','text','')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO messages(id, channel_id, author_id, content, timestamp) VALUES(100,10,2,'first',1)",
+        [],
+    )
+    .unwrap();
+    assert_eq!(unread_for(&conn, 10, 1), 1);
+    set_channel_notification(&conn, 1, 10, NotificationLevel::None);
+    assert!(guild_unread_channels(&conn, 1, 1).is_empty());
+    set_channel_notification(&conn, 1, 10, NotificationLevel::Mentions);
+    assert!(guild_unread_channels(&conn, 1, 1).is_empty());
+    conn.execute(
+        "INSERT INTO messages(id, channel_id, author_id, content, timestamp) VALUES(101,10,2,'hi <@1>',2)",
+        [],
+    )
+    .unwrap();
+    assert_eq!(
+        guild_unread_channels(&conn, 1, 1).get(&10).copied(),
+        Some(1)
+    );
+}
+
+#[test]
+fn channel_notifications_persist_and_reset() {
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    assert_eq!(channel_notification(&conn, 1, 10), NotificationLevel::All);
+    set_channel_notification(&conn, 1, 10, NotificationLevel::Mentions);
+    assert_eq!(
+        channel_notification(&conn, 1, 10),
+        NotificationLevel::Mentions
+    );
+    assert_eq!(
+        channel_notifications_for(&conn, 1)
+            .get(&10)
+            .copied()
+            .unwrap_or_default(),
+        NotificationLevel::Mentions
+    );
+    set_channel_notification(&conn, 1, 10, NotificationLevel::All);
+    assert_eq!(channel_notification(&conn, 1, 10), NotificationLevel::All);
+}
+
+#[test]
+fn leaving_a_guild_removes_membership_state() {
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    conn.execute(
+        "INSERT INTO users(id, username, display_name, pass_hash, created_at) VALUES(2,'member','Member','x',1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO guilds(id, name, icon_color, owner_id, description, created_at, everyone_role_id) VALUES(1,'Guild',0,1,'',1,1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO channels(id, guild_id, name, kind, topic) VALUES(10,1,'general','text','')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(1,2,'',1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO member_roles(guild_id, user_id, role_id) VALUES(1,2,1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO reads(user_id, channel_id, last_read_id) VALUES(2,10,1)",
+        [],
+    )
+    .unwrap();
+    set_channel_notification(&conn, 2, 10, NotificationLevel::None);
+    leave_guild(&conn, 1, 2);
+    assert!(!guild_member(&conn, 1, 2));
+    assert!(member_role_ids(&conn, 1, 2).is_empty());
+    assert_eq!(channel_notification(&conn, 2, 10), NotificationLevel::All);
+}
+
+#[test]
 fn audit_pages_newest_first() {
     let conn = Connection::open_in_memory().expect("memory db");
     migrate(&conn).expect("migrate");

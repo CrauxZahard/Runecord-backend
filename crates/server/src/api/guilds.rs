@@ -67,6 +67,41 @@ pub(crate) async fn guild_commands(
     Ok(Json(store::commands_in_guild(&conn, guild)))
 }
 
+pub(crate) async fn leave_guild(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild): Path<Id>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    let owner: Option<Id> = conn
+        .query_row(
+            "SELECT owner_id FROM guilds WHERE id=?1",
+            params![guild],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(internal)?;
+    let Some(owner) = owner else {
+        return Err(not_found());
+    };
+    if owner == me {
+        return Err(bad(
+            "Delete the server or transfer ownership before leaving.",
+        ));
+    }
+    if !store::guild_member(&conn, guild, me) {
+        return Err(not_found());
+    }
+    store::leave_guild(&conn, guild, me);
+    drop(conn);
+    let _ = state.tx.send(GatewayEvent::MemberRemove {
+        guild_id: guild,
+        user_id: me,
+    });
+    Ok(Json(json!({ "ok": true })))
+}
+
 pub(crate) async fn create_guild(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,

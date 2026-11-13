@@ -190,6 +190,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         )
         .route("/api/guilds/{id}/channels", post(create_channel))
         .route("/api/guilds/{id}/commands", get(guild_commands))
+        .route("/api/guilds/{id}/leave", post(leave_guild))
         .route("/api/guilds/{id}/members", get(list_guild_members))
         .route(
             "/api/guilds/{id}/members/{user_id}",

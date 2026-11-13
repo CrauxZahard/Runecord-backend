@@ -267,3 +267,26 @@ pub fn role_position(conn: &Connection, guild: Id, role: Id) -> Option<i32> {
     .ok()
     .flatten()
 }
+
+pub fn leave_guild(conn: &Connection, guild: Id, user: Id) {
+    conn.execute(
+        "DELETE FROM member_roles WHERE guild_id=?1 AND user_id=?2",
+        params![guild, user],
+    )
+    .ok();
+    conn.execute(
+        "DELETE FROM guild_members WHERE guild_id=?1 AND user_id=?2",
+        params![guild, user],
+    )
+    .ok();
+    conn.execute(
+        "DELETE FROM reads WHERE channel_id IN (SELECT id FROM channels WHERE guild_id=?1)",
+        params![guild],
+    )
+    .ok();
+    conn.execute(
+        "DELETE FROM channel_notifications WHERE user_id=?1 AND channel_id IN (SELECT id FROM channels WHERE guild_id=?2)",
+        params![user, guild],
+    )
+    .ok();
+}

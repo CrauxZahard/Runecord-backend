@@ -27,6 +27,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0006_threads",
         include_str!("../../../../../migrations/0006_threads.sql"),
     ),
+    (
+        "0007_channel_notifications",
+        include_str!("../../../../../migrations/0007_channel_notifications.sql"),
+    ),
 ];
 
 /// Applies numbered migrations once each and returns the connection.
@@ -79,6 +83,7 @@ mod guilds;
 mod members;
 mod messages;
 mod model;
+mod notifications;
 mod permissions;
 mod platform;
 mod seed;
@@ -89,6 +94,7 @@ pub use guilds::*;
 pub use members::*;
 pub use messages::*;
 pub use model::*;
+pub use notifications::*;
 pub use permissions::*;
 pub use platform::*;
 pub use seed::*;

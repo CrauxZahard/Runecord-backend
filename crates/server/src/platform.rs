@@ -42,6 +42,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/webhooks/{id}/{token}", post(execute_webhook))
         .route("/api/guilds/{id}/audit-logs", get(audit_logs))
         .route(
+            "/api/channels/{id}/notifications",
+            post(set_channel_notification),
+        )
+        .route(
             "/api/guilds/{id}/emojis",
             get(list_emojis).post(create_emoji),
         )
@@ -637,6 +641,26 @@ async fn audit_logs(
         q.limit.unwrap_or(50),
         q.before,
     )))
+}
+
+#[derive(Deserialize)]
+struct NotificationBody {
+    level: NotificationLevel,
+}
+
+async fn set_channel_notification(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(channel): Path<Id>,
+    Json(body): Json<NotificationBody>,
+) -> Result<Json<Value>, ApiError> {
+    let me = crate::api::auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    if !store::can_view(&conn, channel, me) {
+        return Err(forbidden());
+    }
+    store::set_channel_notification(&conn, me, channel, body.level);
+    Ok(Json(json!({ "level": body.level })))
 }
 
 #[derive(Deserialize)]

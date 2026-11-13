@@ -55,7 +55,15 @@ pub(crate) fn guild_unread_channels(conn: &Connection, guild_id: Id, me: Id) -> 
         if let Ok(rows) = stmt.query_map(params![guild_id], |r| r.get::<_, Id>(0)) {
             for channel in rows.flatten() {
                 if can_view(conn, channel, me) {
-                    let count = unread_for(conn, channel, me);
+                    let level = channel_notification(conn, me, channel);
+                    if level == NotificationLevel::None {
+                        continue;
+                    }
+                    let count = if level == NotificationLevel::Mentions {
+                        unread_mentions_for(conn, channel, me)
+                    } else {
+                        unread_for(conn, channel, me)
+                    };
                     if count > 0 {
                         out.insert(channel, count);
                     }
