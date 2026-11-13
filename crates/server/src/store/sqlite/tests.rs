@@ -263,6 +263,84 @@ fn public_directory_excludes_joined_servers() {
 }
 
 #[test]
+fn prune_skips_owner_bots_recent_members_and_protected_roles() {
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    for id in 1..=7 {
+        conn.execute(
+            "INSERT INTO users(id, username, display_name, pass_hash, created_at, is_bot) VALUES(?1,?2,?2,'x',1,?3)",
+            params![id, format!("user{id}"), if id == 7 { 1 } else { 0 }],
+        )
+        .unwrap();
+    }
+    conn.execute(
+        "INSERT INTO guilds(id, name, icon_color, owner_id, description, created_at, everyone_role_id) VALUES(1,'Guild',0,1,'',1,10)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO channels(id, guild_id, name, kind, topic) VALUES(20,1,'general','text','')",
+        [],
+    )
+    .unwrap();
+    let old = now_ms() - 40 * 86_400_000;
+    for id in 1..=7 {
+        conn.execute(
+            "INSERT INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(1,?1,'',?2)",
+            params![id, if id == 6 { now_ms() } else { old }],
+        )
+        .unwrap();
+    }
+    conn.execute(
+        "INSERT INTO roles(id, guild_id, name, color, permissions, position, hoist, mentionable) VALUES(10,1,'@everyone',0,0,0,0,0)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO roles(id, guild_id, name, color, permissions, position, hoist, mentionable) VALUES(12,1,'Designer',0,0,1,1,1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO roles(id, guild_id, name, color, permissions, position, hoist, mentionable) VALUES(13,1,'Other',0,0,1,1,1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO member_roles(guild_id, user_id, role_id) VALUES(1,4,12)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO member_roles(guild_id, user_id, role_id) VALUES(1,5,13)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO messages(id, channel_id, author_id, content, timestamp) VALUES(100,20,6,'still here',?1)",
+        params![now_ms()],
+    )
+    .unwrap();
+
+    let mut candidates = prune_candidates(&conn, 1, 7, &[], 2);
+    candidates.sort();
+    assert_eq!(candidates, vec![3]);
+
+    let mut with_designer = prune_candidates(&conn, 1, 7, &[12], 2);
+    with_designer.sort();
+    assert_eq!(with_designer, vec![3, 4]);
+
+    let mut with_both = prune_candidates(&conn, 1, 7, &[12, 13], 2);
+    with_both.sort();
+    assert_eq!(with_both, vec![3, 4, 5]);
+
+    let pruned = prune_members(&conn, 1, &candidates);
+    assert_eq!(pruned, vec![3]);
+    assert!(!guild_member(&conn, 1, 3));
+    assert!(guild_member(&conn, 1, 4));
+}
+
+#[test]
 fn moderation_kick_ban_timeout_and_hierarchy() {
     let conn = Connection::open_in_memory().expect("memory db");
     migrate(&conn).expect("migrate");

@@ -1,4 +1,4 @@
-//! Moderation: kicks, bans and communication timeouts.
+//! Moderation: kicks, bans, communication timeouts and member pruning.
 
 use super::*;
 use rusqlite::{Connection, OptionalExtension, params};
@@ -116,4 +116,89 @@ pub fn list_bans(conn: &Connection, guild: Id) -> Vec<Ban> {
         }
     }
     out
+}
+
+/// The last time a member was seen: their join date or their most recent
+/// message in the server, whichever is later.
+pub fn member_last_active(conn: &Connection, guild: Id, user: Id) -> i64 {
+    conn.query_row(
+        "SELECT MAX(
+             gm.joined_at,
+             COALESCE((
+                 SELECT MAX(m.timestamp) FROM messages m
+                 JOIN channels c ON c.id = m.channel_id
+                 WHERE c.guild_id = ?1 AND m.author_id = gm.user_id
+             ), 0)
+         )
+         FROM guild_members gm WHERE gm.guild_id = ?1 AND gm.user_id = ?2",
+        params![guild, user],
+        |r| r.get::<_, i64>(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+    .unwrap_or(0)
+}
+
+/// Members who would be removed by a prune. Roles protect members unless every
+/// role they hold is explicitly included. Owners, bots and the actor are kept.
+pub fn prune_candidates(
+    conn: &Connection,
+    guild: Id,
+    days: u32,
+    include_roles: &[Id],
+    actor: Id,
+) -> Vec<Id> {
+    let days = days.clamp(1, 30);
+    let cutoff = now_ms() - days as i64 * 86_400_000;
+    let owner: Option<Id> = conn
+        .query_row(
+            "SELECT owner_id FROM guilds WHERE id=?1",
+            params![guild],
+            |r| r.get(0),
+        )
+        .optional()
+        .ok()
+        .flatten();
+    let mut members: Vec<(Id, bool)> = Vec::new();
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT u.id, u.is_bot FROM guild_members gm JOIN users u ON u.id=gm.user_id
+         WHERE gm.guild_id=?1",
+    ) {
+        if let Ok(rows) = stmt.query_map(params![guild], |r| {
+            Ok((r.get::<_, Id>(0)?, r.get::<_, i64>(1).unwrap_or(0) != 0))
+        }) {
+            members.extend(rows.flatten());
+        }
+    }
+    let mut out = Vec::new();
+    for (user, is_bot) in members {
+        if user == actor || owner == Some(user) || is_bot {
+            continue;
+        }
+        if member_last_active(conn, guild, user) > cutoff {
+            continue;
+        }
+        let roles = member_role_ids(conn, guild, user);
+        let protected = if include_roles.is_empty() {
+            !roles.is_empty()
+        } else {
+            roles.iter().any(|role| !include_roles.contains(role))
+        };
+        if protected {
+            continue;
+        }
+        out.push(user);
+    }
+    out
+}
+
+pub fn prune_members(conn: &Connection, guild: Id, users: &[Id]) -> Vec<Id> {
+    let mut pruned = Vec::new();
+    for user in users {
+        if kick_member(conn, guild, *user) {
+            pruned.push(*user);
+        }
+    }
+    pruned
 }

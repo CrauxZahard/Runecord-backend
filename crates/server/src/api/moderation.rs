@@ -21,6 +21,14 @@ pub(crate) struct TimeoutBody {
     seconds: u64,
 }
 
+#[derive(Deserialize, Default)]
+pub(crate) struct PruneBody {
+    #[serde(default)]
+    days: u32,
+    #[serde(default)]
+    role_ids: Vec<Id>,
+}
+
 fn guild_of(conn: &rusqlite::Connection, guild: Id) -> Option<Id> {
     conn.query_row("SELECT id FROM guilds WHERE id=?1", params![guild], |r| {
         r.get(0)
@@ -134,6 +142,84 @@ pub(crate) async fn unban_member(
         json!([{ "key": "name", "new_value": name }]),
     );
     Ok(Json(json!({ "ok": true })))
+}
+
+pub(crate) async fn prune_preview(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild): Path<Id>,
+    Json(body): Json<PruneBody>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    if guild_of(&conn, guild).is_none() {
+        return Err(not_found());
+    }
+    if !has(
+        store::base_permissions(&conn, guild, me),
+        perm::KICK_MEMBERS,
+    ) {
+        return Err(forbidden());
+    }
+    let days = body.days.clamp(1, 30);
+    let candidates = store::prune_candidates(&conn, guild, days, &body.role_ids, me);
+    Ok(Json(
+        json!({ "days": days, "count": candidates.len() as u32 }),
+    ))
+}
+
+pub(crate) async fn prune_members(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild): Path<Id>,
+    Json(body): Json<PruneBody>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    if guild_of(&conn, guild).is_none() {
+        return Err(not_found());
+    }
+    if !has(
+        store::base_permissions(&conn, guild, me),
+        perm::KICK_MEMBERS,
+    ) {
+        return Err(forbidden());
+    }
+    let days = body.days.clamp(1, 30);
+    let candidates = store::prune_candidates(&conn, guild, days, &body.role_ids, me);
+    let pruned = store::prune_members(&conn, guild, &candidates);
+    store::record_audit(
+        &conn,
+        guild,
+        me,
+        25,
+        None,
+        json!([
+            { "key": "days", "new_value": days },
+            { "key": "pruned", "new_value": pruned.len() as u32 }
+        ]),
+    );
+    let count: u32 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM guild_members WHERE guild_id=?1",
+            params![guild],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap_or(0) as u32;
+    drop(conn);
+    for user in &pruned {
+        let _ = state.tx.send(GatewayEvent::MemberRemove {
+            guild_id: guild,
+            user_id: *user,
+        });
+    }
+    let _ = state.tx.send(GatewayEvent::MemberCountUpdate {
+        guild_id: guild,
+        count,
+    });
+    Ok(Json(
+        json!({ "days": days, "pruned": pruned.len() as u32, "members": pruned }),
+    ))
 }
 
 pub(crate) async fn kick_member(
