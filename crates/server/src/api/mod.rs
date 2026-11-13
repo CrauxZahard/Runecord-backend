@@ -213,6 +213,13 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/guilds/{id}/bans/{user_id}", delete(unban_member))
         .route("/api/guilds/{id}/prune/preview", post(prune_preview))
         .route("/api/guilds/{id}/prune", post(prune_members))
+        .route("/api/guilds/{id}/appeals", get(list_appeals))
+        .route(
+            "/api/guilds/{id}/appeals/{appeal}/accept",
+            post(accept_appeal),
+        )
+        .route("/api/guilds/{id}/appeals/{appeal}/deny", post(deny_appeal))
+        .route("/api/invites/{code}/appeal", post(submit_appeal))
         .route("/api/guilds/{id}/roles", get(list_roles).post(create_role))
         .route("/api/guilds/{id}/permissions", get(my_permissions))
         .route("/api/channels/{id}/permissions", get(channel_overwrites))

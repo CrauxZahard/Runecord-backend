@@ -43,6 +43,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0010_moderation",
         include_str!("../../../../../migrations/0010_moderation.sql"),
     ),
+    (
+        "0011_ban_appeals",
+        include_str!("../../../../../migrations/0011_ban_appeals.sql"),
+    ),
 ];
 
 /// Applies numbered migrations once each and returns the connection.

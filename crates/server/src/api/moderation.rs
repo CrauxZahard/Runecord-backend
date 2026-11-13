@@ -327,3 +327,108 @@ pub(crate) async fn timeout_member(
     }
     Ok(Json(json!({ "ok": true, "until": until })))
 }
+
+#[derive(Deserialize, Default)]
+pub(crate) struct AppealBody {
+    #[serde(default)]
+    message: String,
+}
+
+pub(crate) async fn submit_appeal(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(code): Path<String>,
+    Json(body): Json<AppealBody>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    let guild: Option<Id> = conn
+        .query_row(
+            "SELECT guild_id FROM invites WHERE code=?1",
+            params![code],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(internal)?;
+    let Some(guild) = guild else {
+        return Err(not_found());
+    };
+    if !store::is_banned(&conn, guild, me) {
+        return Err(bad("You are not banned from this server."));
+    }
+    let message = body.message.trim().chars().take(1000).collect::<String>();
+    if message.is_empty() {
+        return Err(bad("Explain why the ban should be lifted."));
+    }
+    let id = store::create_appeal(&conn, guild, me, &message);
+    store::record_audit(
+        &conn,
+        guild,
+        me,
+        28,
+        None,
+        json!([{ "key": "message", "new_value": message }]),
+    );
+    Ok(Json(json!({ "ok": true, "appeal": id })))
+}
+
+pub(crate) async fn list_appeals(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild): Path<Id>,
+) -> Result<Json<Vec<BanAppeal>>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    if guild_of(&conn, guild).is_none() {
+        return Err(not_found());
+    }
+    if !has(store::base_permissions(&conn, guild, me), perm::BAN_MEMBERS) {
+        return Err(forbidden());
+    }
+    Ok(Json(store::list_appeals(&conn, guild)))
+}
+
+pub(crate) async fn accept_appeal(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path((guild, appeal)): Path<(Id, Id)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    resolve_appeal_call(state, headers, guild, appeal, true).await
+}
+
+pub(crate) async fn deny_appeal(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path((guild, appeal)): Path<(Id, Id)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    resolve_appeal_call(state, headers, guild, appeal, false).await
+}
+
+async fn resolve_appeal_call(
+    state: Arc<AppState>,
+    headers: HeaderMap,
+    guild: Id,
+    appeal: Id,
+    accepted: bool,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    if guild_of(&conn, guild).is_none() {
+        return Err(not_found());
+    }
+    if !has(store::base_permissions(&conn, guild, me), perm::BAN_MEMBERS) {
+        return Err(forbidden());
+    }
+    let user = store::resolve_appeal(&conn, guild, appeal, me, accepted).ok_or_else(not_found)?;
+    store::record_audit(
+        &conn,
+        guild,
+        me,
+        if accepted { 26 } else { 27 },
+        Some(user),
+        json!([{ "key": "appeal", "new_value": appeal }]),
+    );
+    Ok(Json(
+        json!({ "ok": true, "user": user, "accepted": accepted }),
+    ))
+}

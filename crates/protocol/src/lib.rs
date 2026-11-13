@@ -214,6 +214,15 @@ pub struct Ban {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct BanAppeal {
+    pub id: Id,
+    pub guild_id: Id,
+    pub user: User,
+    pub message: String,
+    pub created_at: i64,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct GuildDetail {
     pub guild: GuildSummary,
     pub channels: Vec<Channel>,

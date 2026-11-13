@@ -263,6 +263,49 @@ fn public_directory_excludes_joined_servers() {
 }
 
 #[test]
+fn ban_appeals_update_and_resolve() {
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    for id in 1..=2 {
+        conn.execute(
+            "INSERT INTO users(id, username, display_name, pass_hash, created_at) VALUES(?1,?2,?2,'x',1)",
+            params![id, format!("user{id}")],
+        )
+        .unwrap();
+    }
+    conn.execute(
+        "INSERT INTO guilds(id, name, icon_color, owner_id, description, created_at, everyone_role_id) VALUES(1,'Guild',0,1,'',1,10)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(1,2,'',1)",
+        [],
+    )
+    .unwrap();
+    ban_member(&conn, 1, 2, 1, "spam");
+
+    let first = create_appeal(&conn, 1, 2, "first reason");
+    assert_eq!(pending_appeal(&conn, 1, 2), Some(first));
+    let second = create_appeal(&conn, 1, 2, "updated reason");
+    assert_eq!(first, second, "a pending appeal is updated, not duplicated");
+    let listed = list_appeals(&conn, 1);
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].message, "updated reason");
+    assert_eq!(listed[0].user.id, 2);
+
+    assert_eq!(resolve_appeal(&conn, 1, first, 1, false), Some(2));
+    assert!(is_banned(&conn, 1, 2));
+    assert!(list_appeals(&conn, 1).is_empty());
+
+    let third = create_appeal(&conn, 1, 2, "please");
+    assert_eq!(resolve_appeal(&conn, 1, third, 1, true), Some(2));
+    assert!(!is_banned(&conn, 1, 2));
+    assert!(list_appeals(&conn, 1).is_empty());
+    assert!(resolve_appeal(&conn, 1, third, 1, true).is_none());
+}
+
+#[test]
 fn prune_skips_owner_bots_recent_members_and_protected_roles() {
     let conn = Connection::open_in_memory().expect("memory db");
     migrate(&conn).expect("migrate");
