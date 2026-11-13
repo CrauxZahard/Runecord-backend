@@ -87,6 +87,7 @@ pub fn guild_detail(conn: &Connection, guild_id: Id, me: Id) -> Option<GuildDeta
     }
     for channel in &mut channels {
         channel.my_permissions = channel_permissions(conn, channel.id, me);
+        fill_thread_preview(conn, channel);
     }
     let roles = guild_roles(conn, guild_id);
     let permissions = guild.permissions;

@@ -125,6 +125,8 @@ pub struct ThreadInfo {
     pub name: String,
     pub message_count: u32,
     pub archived: bool,
+    #[serde(default)]
+    pub preview: String,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

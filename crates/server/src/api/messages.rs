@@ -468,6 +468,69 @@ pub(crate) struct SearchQuery {
     limit: Option<u32>,
 }
 
+#[derive(Default)]
+struct SearchFilters {
+    text: String,
+    from: Option<String>,
+    in_channel: Option<String>,
+    mentions: Option<String>,
+    has_link: bool,
+    before: Option<i64>,
+    after: Option<i64>,
+}
+
+fn parse_search(raw: &str) -> SearchFilters {
+    let mut filters = SearchFilters::default();
+    let mut words = Vec::new();
+    for token in raw.split_whitespace() {
+        let lower = token.to_lowercase();
+        if let Some(value) = lower.strip_prefix("from:") {
+            if !value.is_empty() {
+                filters.from = Some(value.to_string());
+                continue;
+            }
+        }
+        if let Some(value) = lower.strip_prefix("in:") {
+            if !value.is_empty() {
+                filters.in_channel = Some(value.trim_start_matches('#').to_string());
+                continue;
+            }
+        }
+        if let Some(value) = lower.strip_prefix("mentions:") {
+            if !value.is_empty() {
+                filters.mentions = Some(value.trim_start_matches('@').to_string());
+                continue;
+            }
+        }
+        if lower == "has:link" {
+            filters.has_link = true;
+            continue;
+        }
+        if let Some(value) = lower.strip_prefix("before:") {
+            filters.before = parse_day(value);
+            if filters.before.is_some() {
+                continue;
+            }
+        }
+        if let Some(value) = lower.strip_prefix("after:") {
+            filters.after = parse_day(value);
+            if filters.after.is_some() {
+                continue;
+            }
+        }
+        words.push(token);
+    }
+    filters.text = words.join(" ");
+    filters
+}
+
+fn parse_day(value: &str) -> Option<i64> {
+    chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
+        .ok()?
+        .and_hms_opt(0, 0, 0)
+        .map(|date| date.and_utc().timestamp_millis())
+}
+
 pub(crate) async fn search(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -475,7 +538,12 @@ pub(crate) async fn search(
 ) -> Result<Json<SearchResults>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    let term = format!("%{}%", q.q.trim());
+    let filters = parse_search(&q.q);
+    let term = if filters.text.trim().is_empty() {
+        String::new()
+    } else {
+        format!("%{}%", filters.text.trim())
+    };
     if q.q.trim().is_empty() {
         return Ok(Json(SearchResults {
             total: 0,
@@ -485,27 +553,76 @@ pub(crate) async fn search(
     let limit = q.limit.unwrap_or(50).clamp(1, 100);
     let mut rows: Vec<(Id, Id)> = Vec::new();
     if let Ok(mut stmt) = conn.prepare(
-        "SELECT id, channel_id FROM messages WHERE content LIKE ?1 ORDER BY id DESC LIMIT 400",
+        "SELECT id, channel_id FROM messages WHERE (?1='' OR content LIKE ?1) ORDER BY id DESC LIMIT 800",
     ) {
         if let Ok(iter) = stmt.query_map(params![term], |r| Ok((r.get(0)?, r.get(1)?))) {
             for (id, ch) in iter.flatten() {
                 if store::can_view(&conn, ch, me) {
                     rows.push((id, ch));
-                    if rows.len() as u32 >= limit {
-                        break;
-                    }
                 }
             }
         }
     }
+    let mentions_name = filters.mentions.clone();
     let mut hits = Vec::new();
     for (id, ch) in rows {
+        if hits.len() as u32 >= limit {
+            break;
+        }
         let Some(message) = store::message_by_id(&conn, id, me) else {
             continue;
         };
         let Some(channel) = store::channel_by_id(&conn, ch) else {
             continue;
         };
+        let author = store::user_by_id(&conn, message.author_id).unwrap_or_default();
+        if let Some(from) = &filters.from {
+            let matches = author.username.to_lowercase().contains(from)
+                || author.display_name.to_lowercase().contains(from);
+            if !matches {
+                continue;
+            }
+        }
+        if let Some(name) = &filters.in_channel {
+            if !channel.name.to_lowercase().contains(name) {
+                continue;
+            }
+        }
+        if filters.has_link {
+            let content = message.content.to_lowercase();
+            if !(content.contains("http://")
+                || content.contains("https://")
+                || content.contains("www."))
+            {
+                continue;
+            }
+        }
+        if let Some(before) = filters.before {
+            if message.timestamp >= before {
+                continue;
+            }
+        }
+        if let Some(after) = filters.after {
+            if message.timestamp < after {
+                continue;
+            }
+        }
+        if let Some(mention) = &mentions_name {
+            let mut matched = false;
+            for user_id in &message.mentions {
+                if let Some(user) = store::user_by_id(&conn, *user_id) {
+                    if user.username.to_lowercase().contains(mention)
+                        || user.display_name.to_lowercase().contains(mention)
+                    {
+                        matched = true;
+                        break;
+                    }
+                }
+            }
+            if !matched {
+                continue;
+            }
+        }
         let guild = channel.guild_id.and_then(|g| {
             conn.query_row("SELECT name FROM guilds WHERE id=?1", params![g], |r| {
                 r.get::<_, String>(0)
@@ -514,7 +631,6 @@ pub(crate) async fn search(
             .ok()
             .flatten()
         });
-        let author = store::user_by_id(&conn, message.author_id).unwrap_or_default();
         hits.push(SearchHit {
             message,
             channel_id: ch,
@@ -533,3 +649,26 @@ pub(crate) async fn search(
 // ---------------------------------------------------------------------------
 // Friends and DMs
 // ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn search_parses_discord_filters() {
+        let filters = parse_search("fire from:maya in:general has:link after:2026-01-01");
+        assert_eq!(filters.text, "fire");
+        assert_eq!(filters.from.as_deref(), Some("maya"));
+        assert_eq!(filters.in_channel.as_deref(), Some("general"));
+        assert!(filters.has_link);
+        assert!(filters.after.is_some());
+        assert!(filters.before.is_none());
+    }
+
+    #[test]
+    fn search_keeps_unknown_filters_as_text() {
+        let filters = parse_search("hello before:not-a-date");
+        assert_eq!(filters.text, "hello before:not-a-date");
+        assert!(filters.before.is_none());
+    }
+}

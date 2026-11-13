@@ -73,5 +73,8 @@ pub fn list_threads(conn: &Connection, parent: Id, me: Id) -> Vec<Channel> {
             out.extend(rows.flatten().filter(|c| can_view(conn, c.id, me)));
         }
     }
+    for channel in &mut out {
+        fill_thread_preview(conn, channel);
+    }
     out
 }
