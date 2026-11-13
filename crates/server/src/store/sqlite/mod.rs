@@ -71,6 +71,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0017_profile_badges",
         include_str!("../../../../../migrations/0017_profile_badges.sql"),
     ),
+    (
+        "0018_group_dm_management",
+        include_str!("../../../../../migrations/0018_group_dm_management.sql"),
+    ),
 ];
 
 /// Applies numbered migrations once each and returns the connection.
@@ -121,6 +125,7 @@ mod auth;
 mod boosts;
 mod bootstrap;
 mod discovery;
+mod dms;
 mod guilds;
 mod members;
 mod messages;
@@ -136,6 +141,7 @@ pub use auth::*;
 pub use boosts::*;
 pub use bootstrap::*;
 pub use discovery::*;
+pub use dms::*;
 pub use guilds::*;
 pub use members::*;
 pub use messages::*;

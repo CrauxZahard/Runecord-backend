@@ -284,7 +284,14 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/friends/{id}/remove", post(friend_remove))
         .route("/api/friends/{id}/block", post(friend_block))
         .route("/api/dms/group", post(create_group_dm))
-        .route("/api/dms/{id}", post(open_dm))
+        .route("/api/dms/{id}", post(open_dm).patch(update_dm))
+        .route(
+            "/api/dms/{id}/icon",
+            post(upload_dm_icon).delete(remove_dm_icon),
+        )
+        .route("/api/dms/{id}/members", post(add_dm_member))
+        .route("/api/dms/{id}/members/{user}", delete(remove_dm_member))
+        .route("/api/dms/{id}/leave", post(leave_dm))
         .route("/gateway", get(gateway))
         .route("/voice", get(voice_socket))
         .route("/gateway/v1", get(crate::gateway_v10::handler))

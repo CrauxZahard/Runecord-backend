@@ -53,7 +53,7 @@ fn group_dms_keep_name_and_scope_messages_to_members() {
         .unwrap();
     }
     conn.execute(
-        "INSERT INTO channels(id, guild_id, name, kind, topic) VALUES(901,NULL,'Design Crew','group_dm','')",
+        "INSERT INTO channels(id, guild_id, name, kind, topic, owner_id) VALUES(901,NULL,'Design Crew','group_dm','',1)",
         [],
     )
     .unwrap();
@@ -93,6 +93,26 @@ fn group_dms_keep_name_and_scope_messages_to_members() {
         .collect();
     names.sort();
     assert_eq!(names, vec!["user2", "user3"]);
+
+    assert_eq!(dm_owner(&conn, 901), Some(1));
+    assert!(dm_rename(&conn, 901, "Design Crew HQ"));
+    assert!(dm_set_icon(&conn, 901, "/cdn/group.png"));
+    let channel = channel_by_id(&conn, 901).expect("group dm channel");
+    assert_eq!(channel.name, "Design Crew HQ");
+    assert_eq!(channel.icon_url, "/cdn/group.png");
+
+    assert!(dm_add_member(&conn, 901, 4));
+    assert!(!dm_add_member(&conn, 901, 4));
+    assert!(is_dm_member(&conn, 901, 4));
+    assert!(can_send(&conn, 901, 4));
+    assert_eq!(dm_members(&conn, 901), vec![1, 2, 3, 4]);
+
+    assert!(dm_remove_member(&conn, 901, 4));
+    assert!(!is_dm_member(&conn, 901, 4));
+    assert!(!can_send(&conn, 901, 4));
+
+    assert!(dm_transfer_owner(&conn, 901, 3));
+    assert_eq!(dm_owner(&conn, 901), Some(3));
 }
 
 #[test]

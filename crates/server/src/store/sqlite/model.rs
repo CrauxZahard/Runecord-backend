@@ -128,6 +128,7 @@ pub fn channel_from_row(r: &Row<'_>) -> rusqlite::Result<Channel> {
         slowmode: r.get::<_, i64>("slowmode")? as u32,
         last_message_id: r.get("last_message_id")?,
         owner_id: r.get("owner_id")?,
+        icon_url: r.get("icon_url").unwrap_or_default(),
         thread,
         my_permissions: if guild_id.is_none() {
             perm::EVERYONE

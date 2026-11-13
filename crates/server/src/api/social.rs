@@ -3,6 +3,7 @@
 use super::*;
 use crate::{AppState, store};
 use axum::Json;
+use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use rusqlite::{OptionalExtension, params};
@@ -137,8 +138,8 @@ pub(crate) async fn create_group_dm(
     let name = body.name.trim().chars().take(100).collect::<String>();
     let id = store::next_id(&conn);
     conn.execute(
-        "INSERT INTO channels(id, guild_id, name, kind, topic) VALUES(?1,NULL,?2,'group_dm','')",
-        params![id, name],
+        "INSERT INTO channels(id, guild_id, name, kind, topic, owner_id) VALUES(?1,NULL,?2,'group_dm','',?3)",
+        params![id, name, me],
     )
     .map_err(internal)?;
     conn.execute(
@@ -165,6 +166,318 @@ pub(crate) async fn create_group_dm(
     drop(conn);
     let _ = state.tx.send(GatewayEvent::DmCreate(Box::new(dm.clone())));
     Ok(Json(dm))
+}
+
+fn dm_payload_all(conn: &rusqlite::Connection, channel_id: Id) -> Option<DmChannel> {
+    let channel = store::channel_by_id(conn, channel_id)?;
+    let mut recipients = Vec::new();
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT u.* FROM users u JOIN dm_members d ON d.user_id=u.id
+         WHERE d.channel_id=?1 ORDER BY d.rowid",
+    ) {
+        if let Ok(rows) = stmt.query_map(params![channel_id], store::user_from_row) {
+            recipients.extend(rows.flatten());
+        }
+    }
+    Some(DmChannel {
+        channel,
+        recipients,
+    })
+}
+
+fn broadcast_dm_update(state: &AppState, channel_id: Id) {
+    let payload = {
+        let conn = state.store.conn();
+        dm_payload_all(&conn, channel_id)
+    };
+    if let Some(dm) = payload {
+        let _ = state.tx.send(GatewayEvent::DmUpdate(Box::new(dm)));
+    }
+}
+
+#[derive(Deserialize)]
+pub(crate) struct DmRenameBody {
+    #[serde(default)]
+    name: String,
+}
+
+pub(crate) async fn update_dm(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(dm): Path<Id>,
+    Json(body): Json<DmRenameBody>,
+) -> Result<Json<DmChannel>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let payload = {
+        let conn = state.store.conn();
+        let channel = store::channel_by_id(&conn, dm).ok_or_else(not_found)?;
+        if channel.kind != ChannelKind::GroupDm {
+            return Err(bad("Only group DMs can be renamed."));
+        }
+        if !store::is_dm_member(&conn, dm, me) {
+            return Err(forbidden());
+        }
+        if store::dm_owner(&conn, dm) != Some(me) {
+            return Err(ApiError(
+                StatusCode::FORBIDDEN,
+                "Only the group owner can change the name.".into(),
+            ));
+        }
+        let name: String = body.name.trim().chars().take(100).collect();
+        if name.is_empty() {
+            return Err(bad("Group name can't be empty."));
+        }
+        store::dm_rename(&conn, dm, &name);
+        dm_payload_all(&conn, dm).ok_or_else(not_found)?
+    };
+    let _ = state
+        .tx
+        .send(GatewayEvent::DmUpdate(Box::new(payload.clone())));
+    Ok(Json(payload))
+}
+
+const DM_ICON_LIMIT: usize = 4 * 1024 * 1024;
+
+pub(crate) async fn upload_dm_icon(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(dm): Path<Id>,
+    body: Bytes,
+) -> Result<Json<DmChannel>, ApiError> {
+    set_dm_icon(state, headers, dm, body).await
+}
+
+pub(crate) async fn remove_dm_icon(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(dm): Path<Id>,
+) -> Result<Json<DmChannel>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let payload = {
+        let conn = state.store.conn();
+        let channel = store::channel_by_id(&conn, dm).ok_or_else(not_found)?;
+        if channel.kind != ChannelKind::GroupDm {
+            return Err(bad("Only group DMs have icons."));
+        }
+        if !store::is_dm_member(&conn, dm, me) {
+            return Err(forbidden());
+        }
+        if store::dm_owner(&conn, dm) != Some(me) {
+            return Err(ApiError(
+                StatusCode::FORBIDDEN,
+                "Only the group owner can change the icon.".into(),
+            ));
+        }
+        store::dm_set_icon(&conn, dm, "");
+        dm_payload_all(&conn, dm).ok_or_else(not_found)?
+    };
+    let _ = state
+        .tx
+        .send(GatewayEvent::DmUpdate(Box::new(payload.clone())));
+    Ok(Json(payload))
+}
+
+async fn set_dm_icon(
+    state: Arc<AppState>,
+    headers: HeaderMap,
+    dm: Id,
+    body: Bytes,
+) -> Result<Json<DmChannel>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    {
+        let conn = state.store.conn();
+        let channel = store::channel_by_id(&conn, dm).ok_or_else(not_found)?;
+        if channel.kind != ChannelKind::GroupDm {
+            return Err(bad("Only group DMs have icons."));
+        }
+        if !store::is_dm_member(&conn, dm, me) {
+            return Err(forbidden());
+        }
+        if store::dm_owner(&conn, dm) != Some(me) {
+            return Err(ApiError(
+                StatusCode::FORBIDDEN,
+                "Only the group owner can change the icon.".into(),
+            ));
+        }
+    }
+    if body.is_empty() {
+        return Err(bad("Pick an image first."));
+    }
+    if body.len() > DM_ICON_LIMIT {
+        return Err(bad("Group icons must be 4 MB or smaller."));
+    }
+    let format = image::guess_format(&body)
+        .map_err(|_| bad("That file is not a PNG, JPEG, GIF or WebP image."))?;
+    let ext = match format {
+        image::ImageFormat::Png => "png",
+        image::ImageFormat::Jpeg => "jpg",
+        image::ImageFormat::Gif => "gif",
+        image::ImageFormat::WebP => "webp",
+        _ => return Err(bad("That file is not a PNG, JPEG, GIF or WebP image.")),
+    };
+    let decoded =
+        image::load_from_memory(&body).map_err(|_| bad("That image could not be decoded."))?;
+    let (width, height) = (decoded.width(), decoded.height());
+    if width != height {
+        return Err(bad("Group icons must be square."));
+    }
+    if width > 4096 {
+        return Err(bad("Group icons must be 4096 pixels or smaller."));
+    }
+    let hash = store::hash_bytes(&body);
+    let stored = format!("{hash}.{ext}");
+    let dir = state.data_dir.join("cdn");
+    std::fs::create_dir_all(&dir).map_err(internal)?;
+    if !dir.join(&stored).exists() {
+        let sealed = crate::crypto::seal(&state.store.key(), &body);
+        std::fs::write(dir.join(&stored), sealed).map_err(internal)?;
+    }
+    let url = format!("/cdn/{stored}");
+    let payload = {
+        let conn = state.store.conn();
+        store::dm_set_icon(&conn, dm, &url);
+        dm_payload_all(&conn, dm).ok_or_else(not_found)?
+    };
+    let _ = state
+        .tx
+        .send(GatewayEvent::DmUpdate(Box::new(payload.clone())));
+    Ok(Json(payload))
+}
+
+#[derive(Deserialize)]
+pub(crate) struct DmMemberBody {
+    user_id: Id,
+}
+
+pub(crate) async fn add_dm_member(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(dm): Path<Id>,
+    Json(body): Json<DmMemberBody>,
+) -> Result<Json<DmChannel>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let payload = {
+        let conn = state.store.conn();
+        let channel = store::channel_by_id(&conn, dm).ok_or_else(not_found)?;
+        if channel.kind != ChannelKind::GroupDm {
+            return Err(bad("Only group DMs can take new members."));
+        }
+        if !store::is_dm_member(&conn, dm, me) {
+            return Err(forbidden());
+        }
+        if store::dm_members(&conn, dm).len() >= 10 {
+            return Err(bad("Group DMs support up to 10 people."));
+        }
+        let target = store::user_by_id(&conn, body.user_id).ok_or_else(not_found)?;
+        if store::is_dm_member(&conn, dm, target.id) {
+            return Err(bad("That person is already in this group."));
+        }
+        if !store::can_dm(&conn, me, target.id) {
+            return Err(ApiError(
+                StatusCode::FORBIDDEN,
+                format!(
+                    "{}'s privacy settings do not allow new direct messages.",
+                    target.display_name
+                ),
+            ));
+        }
+        store::dm_add_member(&conn, dm, target.id);
+        dm_payload_all(&conn, dm).ok_or_else(not_found)?
+    };
+    let _ = state
+        .tx
+        .send(GatewayEvent::DmUpdate(Box::new(payload.clone())));
+    Ok(Json(payload))
+}
+
+pub(crate) async fn remove_dm_member(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path((dm, user)): Path<(Id, Id)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    {
+        let conn = state.store.conn();
+        let channel = store::channel_by_id(&conn, dm).ok_or_else(not_found)?;
+        if channel.kind != ChannelKind::GroupDm {
+            return Err(bad("Only group DMs have members to remove."));
+        }
+        if !store::is_dm_member(&conn, dm, me) {
+            return Err(forbidden());
+        }
+        if store::dm_owner(&conn, dm) != Some(me) {
+            return Err(ApiError(
+                StatusCode::FORBIDDEN,
+                "Only the group owner can remove members.".into(),
+            ));
+        }
+        if user == me {
+            return Err(bad("Leave the group instead of removing yourself."));
+        }
+        if !store::is_dm_member(&conn, dm, user) {
+            return Err(not_found());
+        }
+        if store::dm_owner(&conn, dm) == Some(user) {
+            return Err(forbidden());
+        }
+        store::dm_remove_member(&conn, dm, user);
+    }
+    let _ = state.tx.send(GatewayEvent::DmRemove {
+        channel_id: dm,
+        user_id: user,
+    });
+    broadcast_dm_update(&state, dm);
+    Ok(Json(json!({ "ok": true })))
+}
+
+pub(crate) async fn leave_dm(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(dm): Path<Id>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let mut broadcast = false;
+    {
+        let conn = state.store.conn();
+        let channel = store::channel_by_id(&conn, dm).ok_or_else(not_found)?;
+        if channel.kind != ChannelKind::GroupDm {
+            return Err(bad("Only group DMs can be left."));
+        }
+        if !store::is_dm_member(&conn, dm, me) {
+            return Err(not_found());
+        }
+        let members = store::dm_members(&conn, dm);
+        if store::dm_owner(&conn, dm) == Some(me) {
+            match members.iter().copied().find(|member| *member != me) {
+                Some(next) => {
+                    store::dm_transfer_owner(&conn, dm, next);
+                }
+                None => {
+                    conn.execute("DELETE FROM messages WHERE channel_id=?1", params![dm])
+                        .ok();
+                    conn.execute("DELETE FROM dm_members WHERE channel_id=?1", params![dm])
+                        .ok();
+                    conn.execute("DELETE FROM channels WHERE id=?1", params![dm])
+                        .ok();
+                    let _ = state.tx.send(GatewayEvent::DmRemove {
+                        channel_id: dm,
+                        user_id: me,
+                    });
+                    return Ok(Json(json!({ "ok": true })));
+                }
+            }
+        }
+        store::dm_remove_member(&conn, dm, me);
+        broadcast = true;
+    }
+    let _ = state.tx.send(GatewayEvent::DmRemove {
+        channel_id: dm,
+        user_id: me,
+    });
+    if broadcast {
+        broadcast_dm_update(&state, dm);
+    }
+    Ok(Json(json!({ "ok": true })))
 }
 
 pub(crate) async fn open_dm(

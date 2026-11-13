@@ -168,6 +168,8 @@ pub struct Channel {
     pub thread: Option<ThreadInfo>,
     #[serde(default)]
     pub my_permissions: u64,
+    #[serde(default)]
+    pub icon_url: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -819,6 +821,11 @@ pub enum GatewayEvent {
         count: u32,
     },
     DmCreate(Box<DmChannel>),
+    DmUpdate(Box<DmChannel>),
+    DmRemove {
+        channel_id: Id,
+        user_id: Id,
+    },
     GuildMembers {
         guild_id: Id,
         members: Vec<Member>,

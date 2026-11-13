@@ -685,7 +685,9 @@ fn dispatch(
             "RELATIONSHIP_REMOVE".into(),
             json!({ "id": user_id.to_string() }),
         )),
-        GatewayEvent::DmCreate(_) => None,
+        GatewayEvent::DmCreate(_) | GatewayEvent::DmUpdate(_) | GatewayEvent::DmRemove { .. } => {
+            None
+        }
         GatewayEvent::ReadUpdate { .. }
         | GatewayEvent::GuildMembers { .. }
         | GatewayEvent::MemberRemove { .. }
