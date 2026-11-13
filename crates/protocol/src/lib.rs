@@ -557,6 +557,10 @@ pub struct CreateChannel {
     pub kind: ChannelKind,
     pub parent_id: Option<Id>,
     pub topic: String,
+    #[serde(default)]
+    pub slowmode: u32,
+    #[serde(default)]
+    pub nsfw: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

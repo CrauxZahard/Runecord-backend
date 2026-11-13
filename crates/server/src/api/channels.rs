@@ -78,8 +78,8 @@ pub(crate) async fn create_channel(
         )
         .unwrap_or(1);
     conn.execute(
-        "INSERT INTO channels(id, guild_id, name, kind, position, parent_id, topic) VALUES(?1,?2,?3,?4,?5,?6,?7)",
-        params![id, guild, name, kind_str(body.kind), pos, body.parent_id, body.topic],
+        "INSERT INTO channels(id, guild_id, name, kind, position, parent_id, topic, slowmode, nsfw) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+        params![id, guild, name, kind_str(body.kind), pos, body.parent_id, body.topic, body.slowmode as i64, body.nsfw as i64],
     )
     .map_err(internal)?;
     let channel = store::channel_by_id(&conn, id).ok_or_else(not_found)?;
@@ -127,12 +127,22 @@ pub(crate) async fn update_channel(
             return Err(forbidden());
         }
     }
+    if body.name.trim().is_empty() {
+        return Err(bad("Name the channel."));
+    }
     conn.execute(
-        "UPDATE channels SET name=?1, topic=?2 WHERE id=?3",
-        params![body.name.trim(), body.topic, id],
+        "UPDATE channels SET name=?1, topic=?2, slowmode=?3, nsfw=?4 WHERE id=?5",
+        params![
+            body.name.trim().to_lowercase().replace(' ', "-"),
+            body.topic,
+            body.slowmode as i64,
+            body.nsfw as i64,
+            id
+        ],
     )
     .map_err(internal)?;
     let channel = store::channel_by_id(&conn, id).ok_or_else(not_found)?;
+    let channel = channel_for(&conn, channel, me);
     drop(conn);
     let _ = state
         .tx
@@ -163,9 +173,42 @@ pub(crate) async fn delete_channel(
             return Err(forbidden());
         }
     }
-    conn.execute("DELETE FROM channels WHERE id=?1", params![id])
+    let mut doomed = vec![id];
+    if let Ok(mut stmt) = conn.prepare("SELECT id FROM channels WHERE thread_parent_id=?1") {
+        if let Ok(rows) = stmt.query_map(params![id], |r| r.get::<_, Id>(0)) {
+            doomed.extend(rows.flatten());
+        }
+    }
+    for channel in &doomed {
+        conn.execute(
+            "DELETE FROM reactions WHERE message_id IN (SELECT id FROM messages WHERE channel_id=?1)",
+            params![channel],
+        )
         .ok();
+        conn.execute(
+            "DELETE FROM attachments WHERE message_id IN (SELECT id FROM messages WHERE channel_id=?1)",
+            params![channel],
+        )
+        .ok();
+        conn.execute("DELETE FROM messages WHERE channel_id=?1", params![channel])
+            .ok();
+        conn.execute(
+            "DELETE FROM overwrites WHERE channel_id=?1",
+            params![channel],
+        )
+        .ok();
+        conn.execute("DELETE FROM reads WHERE channel_id=?1", params![channel])
+            .ok();
+        conn.execute("DELETE FROM channels WHERE id=?1", params![channel])
+            .ok();
+    }
     drop(conn);
+    for channel in doomed.into_iter().skip(1) {
+        let _ = state.tx.send(GatewayEvent::ChannelDelete {
+            channel_id: channel,
+            guild_id: guild,
+        });
+    }
     let _ = state.tx.send(GatewayEvent::ChannelDelete {
         channel_id: id,
         guild_id: guild,

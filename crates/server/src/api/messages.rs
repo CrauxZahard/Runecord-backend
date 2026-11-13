@@ -60,6 +60,32 @@ pub(crate) async fn send_message(
         return Err(bad("Message can't be empty."));
     }
     let target = store::channel_by_id(&conn, channel).ok_or_else(not_found)?;
+    if target.slowmode > 0 {
+        let perms = store::channel_permissions(&conn, channel, me);
+        if !has(perms, perm::MANAGE_MESSAGES) && !has(perms, perm::MANAGE_CHANNELS) {
+            let last: Option<i64> = conn
+                .query_row(
+                    "SELECT MAX(timestamp) FROM messages WHERE channel_id=?1 AND author_id=?2",
+                    params![channel, me],
+                    |r| r.get(0),
+                )
+                .optional()
+                .ok()
+                .flatten();
+            if let Some(last) = last {
+                let wait = last + target.slowmode as i64 * 1000 - now_ms();
+                if wait > 0 {
+                    return Err(ApiError(
+                        StatusCode::TOO_MANY_REQUESTS,
+                        format!(
+                            "Slowmode: wait {}s before posting again.",
+                            (wait + 999) / 1000
+                        ),
+                    ));
+                }
+            }
+        }
+    }
     let mut dest = channel;
     let mut new_thread: Option<Channel> = None;
     if target.kind == ChannelKind::Forum {
