@@ -176,6 +176,14 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/logout", post(logout))
         .route("/api/bootstrap", get(bootstrap))
         .route("/api/me", patch(update_me))
+        .route(
+            "/api/me/avatar",
+            post(upload_my_avatar).delete(remove_my_avatar),
+        )
+        .route(
+            "/api/me/banner",
+            post(upload_my_banner).delete(remove_my_banner),
+        )
         .route("/api/me/password", post(change_password))
         .route("/api/me/privacy", post(update_privacy))
         .route("/api/users/{id}", get(get_user))

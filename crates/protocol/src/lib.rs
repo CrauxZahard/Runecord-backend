@@ -61,6 +61,10 @@ pub struct User {
     pub custom_status: String,
     #[serde(default)]
     pub pronouns: String,
+    #[serde(default)]
+    pub avatar_url: String,
+    #[serde(default)]
+    pub banner_url: String,
     pub status: Presence,
     #[serde(default)]
     pub is_bot: bool,

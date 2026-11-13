@@ -48,6 +48,8 @@ pub fn user_from_row(r: &Row<'_>) -> rusqlite::Result<User> {
         bio: r.get("bio")?,
         custom_status: r.get("custom_status")?,
         pronouns: r.get("pronouns").unwrap_or_default(),
+        avatar_url: r.get("avatar_url").unwrap_or_default(),
+        banner_url: r.get("banner_url").unwrap_or_default(),
         status: presence_from(&r.get::<_, String>("status")?),
         is_bot: r.get::<_, i64>("is_bot").unwrap_or(0) != 0,
         created_at: r.get("created_at")?,

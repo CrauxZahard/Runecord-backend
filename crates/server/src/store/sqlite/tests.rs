@@ -263,6 +263,35 @@ fn public_directory_excludes_joined_servers() {
 }
 
 #[test]
+fn user_profile_images_round_trip() {
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    conn.execute(
+        "INSERT INTO users(id, username, display_name, pass_hash, created_at) VALUES(1,'nova','Nova','x',1)",
+        [],
+    )
+    .unwrap();
+    let user = user_by_id(&conn, 1).expect("user");
+    assert!(user.avatar_url.is_empty());
+    assert!(user.banner_url.is_empty());
+
+    conn.execute(
+        "UPDATE users SET avatar_url='/cdn/avatar.png', banner_url='/cdn/banner.png' WHERE id=1",
+        [],
+    )
+    .unwrap();
+    let user = user_by_id(&conn, 1).expect("user");
+    assert_eq!(user.avatar_url, "/cdn/avatar.png");
+    assert_eq!(user.banner_url, "/cdn/banner.png");
+
+    conn.execute("UPDATE users SET avatar_url='' WHERE id=1", [])
+        .unwrap();
+    let user = user_by_id(&conn, 1).expect("user");
+    assert!(user.avatar_url.is_empty());
+    assert_eq!(user.banner_url, "/cdn/banner.png");
+}
+
+#[test]
 fn pronouns_and_shared_guilds_round_trip() {
     let conn = Connection::open_in_memory().expect("memory db");
     migrate(&conn).expect("migrate");
