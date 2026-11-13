@@ -199,6 +199,14 @@ pub fn router(state: Arc<AppState>) -> Router {
             post(boost_guild).delete(unboost_guild),
         )
         .route(
+            "/api/guilds/{id}/icon",
+            post(upload_guild_icon).delete(remove_guild_icon),
+        )
+        .route(
+            "/api/guilds/{id}/banner",
+            post(upload_guild_banner).delete(remove_guild_banner),
+        )
+        .route(
             "/api/guilds/{id}/discoverable",
             post(set_guild_discoverable),
         )

@@ -195,6 +195,10 @@ pub struct GuildSummary {
     #[serde(default)]
     pub discoverable: bool,
     #[serde(default)]
+    pub icon_url: String,
+    #[serde(default)]
+    pub banner_url: String,
+    #[serde(default)]
     pub boosts: u32,
     #[serde(default)]
     pub boost_level: u32,
@@ -261,6 +265,10 @@ pub struct Guild {
     pub tag: String,
     #[serde(default)]
     pub permissions: u64,
+    #[serde(default)]
+    pub icon_url: String,
+    #[serde(default)]
+    pub banner_url: String,
     pub created_at: i64,
     pub channels: Vec<Channel>,
     pub roles: Vec<Role>,

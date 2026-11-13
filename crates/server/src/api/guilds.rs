@@ -3,6 +3,7 @@
 use super::*;
 use crate::{AppState, store};
 use axum::Json;
+use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use rusqlite::{OptionalExtension, params};
@@ -439,4 +440,159 @@ pub(crate) async fn my_permissions(
     Ok(Json(
         json!({ "permissions": store::base_permissions(&conn, guild, me), "channels": channels }),
     ))
+}
+
+// ---------------------------------------------------------------------------
+// Server icon and banner
+// ---------------------------------------------------------------------------
+
+const ICON_LIMIT: usize = 4 * 1024 * 1024;
+const BANNER_LIMIT: usize = 10 * 1024 * 1024;
+
+pub(crate) async fn upload_guild_icon(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild): Path<Id>,
+    body: Bytes,
+) -> Result<Json<GuildSummary>, ApiError> {
+    set_guild_image(state, headers, guild, body, true).await
+}
+
+pub(crate) async fn upload_guild_banner(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild): Path<Id>,
+    body: Bytes,
+) -> Result<Json<GuildSummary>, ApiError> {
+    set_guild_image(state, headers, guild, body, false).await
+}
+
+pub(crate) async fn remove_guild_icon(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild): Path<Id>,
+) -> Result<Json<GuildSummary>, ApiError> {
+    clear_guild_image(state, headers, guild, true).await
+}
+
+pub(crate) async fn remove_guild_banner(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild): Path<Id>,
+) -> Result<Json<GuildSummary>, ApiError> {
+    clear_guild_image(state, headers, guild, false).await
+}
+
+async fn set_guild_image(
+    state: Arc<AppState>,
+    headers: HeaderMap,
+    guild: Id,
+    body: Bytes,
+    icon: bool,
+) -> Result<Json<GuildSummary>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    if !has(
+        store::base_permissions(&conn, guild, me),
+        perm::MANAGE_GUILD,
+    ) {
+        return Err(forbidden());
+    }
+    let limit = if icon { ICON_LIMIT } else { BANNER_LIMIT };
+    if body.is_empty() {
+        return Err(bad("Pick an image first."));
+    }
+    if body.len() > limit {
+        return Err(bad(&format!(
+            "Image is larger than {} MB.",
+            limit / (1024 * 1024)
+        )));
+    }
+    let format = image::guess_format(&body)
+        .map_err(|_| bad("That file is not a PNG, JPEG, GIF or WebP image."))?;
+    let ext = match format {
+        image::ImageFormat::Png => "png",
+        image::ImageFormat::Jpeg => "jpg",
+        image::ImageFormat::Gif => "gif",
+        image::ImageFormat::WebP => "webp",
+        _ => return Err(bad("That file is not a PNG, JPEG, GIF or WebP image.")),
+    };
+    let decoded =
+        image::load_from_memory(&body).map_err(|_| bad("That image could not be decoded."))?;
+    let (width, height) = (decoded.width(), decoded.height());
+    if width > 4096 || height > 4096 {
+        return Err(bad("Images must be 4096 pixels or smaller on each side."));
+    }
+    if icon && width != height {
+        return Err(bad("The server icon must be square."));
+    }
+    if !icon && width < height {
+        return Err(bad("The banner should be landscape, ideally 16:9."));
+    }
+    let hash = store::hash_bytes(&body);
+    let stored = format!("{hash}.{ext}");
+    let dir = state.data_dir.join("cdn");
+    std::fs::create_dir_all(&dir).map_err(internal)?;
+    if !dir.join(&stored).exists() {
+        let sealed = crate::crypto::seal(&state.store.key(), &body);
+        std::fs::write(dir.join(&stored), sealed).map_err(internal)?;
+    }
+    let url = format!("/cdn/{stored}");
+    let column = if icon { "icon_url" } else { "banner_url" };
+    conn.execute(
+        &format!("UPDATE guilds SET {column}=?1 WHERE id=?2"),
+        params![url, guild],
+    )
+    .map_err(internal)?;
+    let summary = store::guild_summary_with_unread(&conn, guild, me)
+        .map(|(summary, _)| summary)
+        .ok_or_else(not_found)?;
+    drop(conn);
+    broadcast_guild(&state, &summary);
+    Ok(Json(summary))
+}
+
+async fn clear_guild_image(
+    state: Arc<AppState>,
+    headers: HeaderMap,
+    guild: Id,
+    icon: bool,
+) -> Result<Json<GuildSummary>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    if !has(
+        store::base_permissions(&conn, guild, me),
+        perm::MANAGE_GUILD,
+    ) {
+        return Err(forbidden());
+    }
+    let column = if icon { "icon_url" } else { "banner_url" };
+    conn.execute(
+        &format!("UPDATE guilds SET {column}='' WHERE id=?1"),
+        params![guild],
+    )
+    .map_err(internal)?;
+    let summary = store::guild_summary_with_unread(&conn, guild, me)
+        .map(|(summary, _)| summary)
+        .ok_or_else(not_found)?;
+    drop(conn);
+    broadcast_guild(&state, &summary);
+    Ok(Json(summary))
+}
+
+fn broadcast_guild(state: &AppState, summary: &GuildSummary) {
+    let _ = state.tx.send(GatewayEvent::GuildUpdate(Box::new(Guild {
+        id: summary.id,
+        name: summary.name.clone(),
+        icon_color: summary.icon_color,
+        owner_id: summary.owner_id,
+        description: summary.description.clone(),
+        member_count: summary.member_count,
+        tag: summary.tag.clone(),
+        permissions: summary.permissions,
+        icon_url: summary.icon_url.clone(),
+        banner_url: summary.banner_url.clone(),
+        created_at: summary.created_at,
+        ..Guild::default()
+    })));
 }

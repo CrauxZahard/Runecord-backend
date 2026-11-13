@@ -263,6 +263,46 @@ fn public_directory_excludes_joined_servers() {
 }
 
 #[test]
+fn guild_images_survive_and_reach_the_summary() {
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    conn.execute(
+        "INSERT INTO users(id, username, display_name, pass_hash, created_at) VALUES(1,'nova','Nova','x',1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO guilds(id, name, icon_color, owner_id, description, created_at, everyone_role_id) VALUES(1,'Guild',0,1,'',1,10)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(1,1,'',1)",
+        [],
+    )
+    .unwrap();
+
+    let (summary, _) = guild_summary_with_unread(&conn, 1, 1).expect("summary");
+    assert!(summary.icon_url.is_empty());
+    assert!(summary.banner_url.is_empty());
+
+    conn.execute(
+        "UPDATE guilds SET icon_url='/cdn/icon.png', banner_url='/cdn/banner.jpg' WHERE id=1",
+        [],
+    )
+    .unwrap();
+    let (summary, _) = guild_summary_with_unread(&conn, 1, 1).expect("summary");
+    assert_eq!(summary.icon_url, "/cdn/icon.png");
+    assert_eq!(summary.banner_url, "/cdn/banner.jpg");
+
+    conn.execute("UPDATE guilds SET icon_url='' WHERE id=1", [])
+        .unwrap();
+    let (summary, _) = guild_summary_with_unread(&conn, 1, 1).expect("summary");
+    assert!(summary.icon_url.is_empty());
+    assert_eq!(summary.banner_url, "/cdn/banner.jpg");
+}
+
+#[test]
 fn boost_perks_scale_with_level_and_reach_summary() {
     assert_eq!(upload_limit_bytes(0), 48 * 1024 * 1024);
     assert_eq!(upload_limit_bytes(1), 64 * 1024 * 1024);
