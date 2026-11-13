@@ -113,6 +113,18 @@ pub(crate) struct PasswordBody {
     new: String,
 }
 
+pub(crate) async fn update_privacy(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(body): Json<UpdatePrivacy>,
+) -> Result<Json<User>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    store::set_privacy(&conn, me, body.dm_privacy, body.friend_privacy);
+    let user = store::user_by_id(&conn, me).ok_or_else(not_found)?;
+    Ok(Json(user))
+}
+
 pub(crate) async fn change_password(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,

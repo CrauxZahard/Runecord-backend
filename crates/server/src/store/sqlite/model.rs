@@ -21,6 +21,22 @@ pub fn presence_str(p: Presence) -> &'static str {
     }
 }
 
+pub fn privacy_from(value: &str) -> PrivacyLevel {
+    match value {
+        "server_members" => PrivacyLevel::ServerMembers,
+        "nobody" => PrivacyLevel::Nobody,
+        _ => PrivacyLevel::Everyone,
+    }
+}
+
+pub fn privacy_str(level: PrivacyLevel) -> &'static str {
+    match level {
+        PrivacyLevel::Everyone => "everyone",
+        PrivacyLevel::ServerMembers => "server_members",
+        PrivacyLevel::Nobody => "nobody",
+    }
+}
+
 pub fn user_from_row(r: &Row<'_>) -> rusqlite::Result<User> {
     Ok(User {
         id: r.get("id")?,
@@ -34,6 +50,8 @@ pub fn user_from_row(r: &Row<'_>) -> rusqlite::Result<User> {
         status: presence_from(&r.get::<_, String>("status")?),
         is_bot: r.get::<_, i64>("is_bot").unwrap_or(0) != 0,
         created_at: r.get("created_at")?,
+        dm_privacy: privacy_from(&r.get::<_, String>("dm_privacy").unwrap_or_default()),
+        friend_privacy: privacy_from(&r.get::<_, String>("friend_privacy").unwrap_or_default()),
     })
 }
 

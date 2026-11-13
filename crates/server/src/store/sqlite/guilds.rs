@@ -15,7 +15,7 @@ pub fn guild_summary_with_unread(
 ) -> Option<(GuildSummary, BTreeMap<Id, u32>)> {
     let mut summary = conn
         .query_row(
-            "SELECT id, name, icon_color, owner_id, description, created_at, tag FROM guilds WHERE id=?1",
+            "SELECT id, name, icon_color, owner_id, description, created_at, tag, discoverable FROM guilds WHERE id=?1",
             params![guild_id],
             |r| {
                 Ok(GuildSummary {
@@ -26,6 +26,7 @@ pub fn guild_summary_with_unread(
                     description: r.get(4)?,
                     created_at: r.get(5)?,
                     tag: r.get(6)?,
+                    discoverable: r.get::<_, i64>(7).unwrap_or(1) != 0,
                     ..GuildSummary::default()
                 })
             },

@@ -169,6 +169,70 @@ fn guild_commands_include_installed_app() {
 }
 
 #[test]
+fn privacy_controls_new_dms_and_friend_requests() {
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    for id in 1..=3 {
+        conn.execute(
+            "INSERT INTO users(id, username, display_name, pass_hash, created_at) VALUES(?1,?2,?2,'x',1)",
+            params![id, format!("user{id}")],
+        )
+        .unwrap();
+    }
+    conn.execute(
+        "INSERT INTO guilds(id, name, icon_color, owner_id, description, created_at, everyone_role_id) VALUES(1,'Guild',0,1,'',1,0)",
+        [],
+    )
+    .unwrap();
+    for id in 1..=2 {
+        conn.execute(
+            "INSERT INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(1,?1,'',1)",
+            params![id],
+        )
+        .unwrap();
+    }
+    set_privacy(&conn, 2, PrivacyLevel::Nobody, PrivacyLevel::Nobody);
+    assert!(!can_dm(&conn, 1, 2));
+    assert!(!can_friend_request(&conn, 1, 2));
+    set_privacy(
+        &conn,
+        2,
+        PrivacyLevel::ServerMembers,
+        PrivacyLevel::ServerMembers,
+    );
+    assert!(can_dm(&conn, 1, 2));
+    assert!(can_friend_request(&conn, 1, 2));
+    assert!(!can_dm(&conn, 3, 2));
+    conn.execute(
+        "INSERT INTO relationships(user_id, other_id, kind, since) VALUES(1,2,'friend',1)",
+        [],
+    )
+    .unwrap();
+    assert!(can_dm(&conn, 1, 2));
+}
+
+#[test]
+fn discoverability_toggle_hides_server_from_explore() {
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    conn.execute(
+        "INSERT INTO users(id, username, display_name, pass_hash, created_at) VALUES(1,'me','Me','x',1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO guilds(id, name, icon_color, owner_id, description, created_at, everyone_role_id) VALUES(1,'Guild',0,1,'',1,0)",
+        [],
+    )
+    .unwrap();
+    assert_eq!(public_guilds(&conn, 1).len(), 1);
+    assert!(set_guild_discoverable(&conn, 1, false));
+    assert!(public_guilds(&conn, 1).is_empty());
+    assert!(set_guild_discoverable(&conn, 1, true));
+    assert_eq!(public_guilds(&conn, 1).len(), 1);
+}
+
+#[test]
 fn public_directory_excludes_joined_servers() {
     let conn = Connection::open_in_memory().expect("memory db");
     migrate(&conn).expect("migrate");

@@ -19,6 +19,12 @@ pub(crate) async fn friend_request(
     if me == other || store::user_by_id(&conn, other).is_none() {
         return Err(bad("No such user."));
     }
+    if !store::can_friend_request(&conn, me, other) {
+        return Err(ApiError(
+            StatusCode::FORBIDDEN,
+            "This user is not accepting friend requests.".into(),
+        ));
+    }
     conn.execute("INSERT OR REPLACE INTO relationships(user_id, other_id, kind, since) VALUES(?1,?2,'outgoing',?3)", params![me, other, now_ms()]).ok();
     conn.execute("INSERT OR REPLACE INTO relationships(user_id, other_id, kind, since) VALUES(?1,?2,'incoming',?3)", params![other, me, now_ms()]).ok();
     drop(conn);
@@ -109,6 +115,12 @@ pub(crate) async fn open_dm(
     let id = if let Some(id) = existing {
         id
     } else {
+        if !store::can_dm(&conn, me, other) {
+            return Err(ApiError(
+                StatusCode::FORBIDDEN,
+                "This user's privacy settings do not allow new direct messages.".into(),
+            ));
+        }
         let id = store::next_id(&conn);
         conn.execute(
             "INSERT INTO channels(id, guild_id, name, kind, topic) VALUES(?1,NULL,'','dm','')",

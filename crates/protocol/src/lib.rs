@@ -37,6 +37,15 @@ impl Presence {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PrivacyLevel {
+    #[default]
+    Everyone,
+    ServerMembers,
+    Nobody,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct User {
     pub id: Id,
@@ -54,6 +63,10 @@ pub struct User {
     #[serde(default)]
     pub is_bot: bool,
     pub created_at: i64,
+    #[serde(default)]
+    pub dm_privacy: PrivacyLevel,
+    #[serde(default)]
+    pub friend_privacy: PrivacyLevel,
 }
 
 impl User {
@@ -179,6 +192,8 @@ pub struct GuildSummary {
     #[serde(default)]
     pub mention_count: u32,
     pub created_at: i64,
+    #[serde(default)]
+    pub discoverable: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -643,6 +658,12 @@ pub struct UpdateProfile {
     pub banner_color: Option<u32>,
     pub bio: Option<String>,
     pub custom_status: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UpdatePrivacy {
+    pub dm_privacy: PrivacyLevel,
+    pub friend_privacy: PrivacyLevel,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

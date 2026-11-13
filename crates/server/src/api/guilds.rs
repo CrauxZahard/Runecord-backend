@@ -6,6 +6,7 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use rusqlite::{OptionalExtension, params};
+use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -100,6 +101,31 @@ pub(crate) async fn leave_guild(
         user_id: me,
     });
     Ok(Json(json!({ "ok": true })))
+}
+
+#[derive(Deserialize)]
+pub(crate) struct DiscoverableBody {
+    discoverable: bool,
+}
+
+pub(crate) async fn set_guild_discoverable(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild): Path<Id>,
+    Json(body): Json<DiscoverableBody>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    if !has(
+        store::base_permissions(&conn, guild, me),
+        perm::MANAGE_GUILD,
+    ) {
+        return Err(forbidden());
+    }
+    if !store::set_guild_discoverable(&conn, guild, body.discoverable) {
+        return Err(not_found());
+    }
+    Ok(Json(json!({ "discoverable": body.discoverable })))
 }
 
 pub(crate) async fn public_guilds(

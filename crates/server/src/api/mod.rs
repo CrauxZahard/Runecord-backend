@@ -177,6 +177,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/bootstrap", get(bootstrap))
         .route("/api/me", patch(update_me))
         .route("/api/me/password", post(change_password))
+        .route("/api/me/privacy", post(update_privacy))
         .route("/api/users/{id}", get(get_user))
         .route("/api/users/lookup", get(lookup_users))
         .route("/api/users/batch", post(get_users_batch))
@@ -193,6 +194,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/guilds/{id}/channels", post(create_channel))
         .route("/api/guilds/{id}/commands", get(guild_commands))
         .route("/api/guilds/{id}/leave", post(leave_guild))
+        .route(
+            "/api/guilds/{id}/discoverable",
+            post(set_guild_discoverable),
+        )
         .route("/api/guilds/{id}/members", get(list_guild_members))
         .route(
             "/api/guilds/{id}/members/{user_id}",
