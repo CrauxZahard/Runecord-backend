@@ -3,12 +3,12 @@
 
 use crate::AppState;
 use axum::extract::{Request, State};
-use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use serde_json::json;
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -35,16 +35,28 @@ pub struct LimitInfo {
 impl LimitInfo {
     fn headers(&self) -> HeaderMap {
         let mut headers = HeaderMap::new();
-        let epoch = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs_f64() + self.reset_after;
+        let epoch = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs_f64()
+            + self.reset_after;
         let put = |headers: &mut HeaderMap, name: &'static str, value: String| {
             if let Ok(v) = HeaderValue::from_str(&value) {
                 headers.insert(name, v);
             }
         };
         put(&mut headers, "x-ratelimit-limit", self.limit.to_string());
-        put(&mut headers, "x-ratelimit-remaining", self.remaining.to_string());
+        put(
+            &mut headers,
+            "x-ratelimit-remaining",
+            self.remaining.to_string(),
+        );
         put(&mut headers, "x-ratelimit-reset", format!("{epoch:.3}"));
-        put(&mut headers, "x-ratelimit-reset-after", format!("{:.3}", self.reset_after));
+        put(
+            &mut headers,
+            "x-ratelimit-reset-after",
+            format!("{:.3}", self.reset_after),
+        );
         put(&mut headers, "x-ratelimit-bucket", self.bucket.clone());
         if self.global {
             put(&mut headers, "x-ratelimit-global", "true".into());
@@ -55,7 +67,10 @@ impl LimitInfo {
 
 impl RateLimiter {
     pub fn new() -> Self {
-        Self { buckets: Mutex::new(HashMap::new()), global: Mutex::new(HashMap::new()) }
+        Self {
+            buckets: Mutex::new(HashMap::new()),
+            global: Mutex::new(HashMap::new()),
+        }
     }
 
     fn take(bucket: &mut Bucket, limit: u32, window: Duration) -> (u32, f64) {
@@ -68,23 +83,52 @@ impl RateLimiter {
         if bucket.remaining > 0 {
             bucket.remaining -= 1;
         }
-        (bucket.remaining, bucket.reset.saturating_duration_since(now).as_secs_f64())
+        (
+            bucket.remaining,
+            bucket.reset.saturating_duration_since(now).as_secs_f64(),
+        )
     }
 
-    pub fn check(&self, actor: &str, route: &str, method: &Method, path: &str) -> Result<LimitInfo, LimitInfo> {
+    pub fn check(
+        &self,
+        actor: &str,
+        route: &str,
+        method: &Method,
+        path: &str,
+    ) -> Result<LimitInfo, LimitInfo> {
         let (limit, window) = policy(route, method, path);
         let global_key = actor.to_string();
-        let mut global = self.global.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let g = global.entry(global_key).or_insert(Bucket { limit: 50, remaining: 50, reset: Instant::now() });
+        let mut global = self
+            .global
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let g = global.entry(global_key).or_insert(Bucket {
+            limit: 50,
+            remaining: 50,
+            reset: Instant::now(),
+        });
         let (g_remaining, g_reset) = Self::take(g, 50, Duration::from_secs(1));
         if g_remaining == 0 {
-            return Err(LimitInfo { limit: 50, remaining: 0, reset_after: g_reset, bucket: "global".into(), global: true });
+            return Err(LimitInfo {
+                limit: 50,
+                remaining: 0,
+                reset_after: g_reset,
+                bucket: "global".into(),
+                global: true,
+            });
         }
         drop(global);
 
         let bucket_key = format!("{actor}:{method}:{route}:{path}");
-        let mut buckets = self.buckets.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let b = buckets.entry(bucket_key).or_insert(Bucket { limit, remaining: limit, reset: Instant::now() + window });
+        let mut buckets = self
+            .buckets
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let b = buckets.entry(bucket_key).or_insert(Bucket {
+            limit,
+            remaining: limit,
+            reset: Instant::now() + window,
+        });
         let (remaining, reset_after) = Self::take(b, limit, window);
         let info = LimitInfo {
             limit,
@@ -93,11 +137,7 @@ impl RateLimiter {
             bucket: short_hash(route),
             global: false,
         };
-        if remaining == 0 {
-            Err(info)
-        } else {
-            Ok(info)
-        }
+        if remaining == 0 { Err(info) } else { Ok(info) }
     }
 }
 

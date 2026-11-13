@@ -2,17 +2,17 @@
 //! A central pump buffers events per session, so missed events replay even while the
 //! socket is gone. The native `/gateway` stays as-is; both share the same bus.
 
+use crate::AppState;
 use crate::compat::{channel_json, guild_json, iso, message_json, user_json};
 use crate::store;
-use crate::AppState;
-use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
+use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use axum::response::Response;
 use futures_util::{SinkExt, StreamExt};
 use runecord_protocol::*;
 use rusqlite::OptionalExtension as _;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -61,7 +61,10 @@ pub struct Sessions {
 
 impl Sessions {
     pub fn new() -> Self {
-        Self { inner: Mutex::new(HashMap::new()), counter: AtomicU64::new(1) }
+        Self {
+            inner: Mutex::new(HashMap::new()),
+            counter: AtomicU64::new(1),
+        }
     }
 
     fn next_id(&self) -> String {
@@ -70,7 +73,10 @@ impl Sessions {
     }
 
     fn prune(&self) {
-        let mut map = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut map = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         map.retain(|_, s| s.seen.elapsed() < SESSION_TTL);
     }
 
@@ -78,10 +84,20 @@ impl Sessions {
         self.prune();
         let id = self.next_id();
         let (live, rx) = broadcast::channel(1024);
-        let mut map = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut map = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         map.insert(
             id.clone(),
-            Session { user, intents, seq: 0, buffer: VecDeque::new(), seen: Instant::now(), live },
+            Session {
+                user,
+                intents,
+                seq: 0,
+                buffer: VecDeque::new(),
+                seen: Instant::now(),
+                live,
+            },
         );
         (id, rx)
     }
@@ -113,7 +129,10 @@ impl Sessions {
 
     /// Appends to the replay buffer and fans out to a live socket if one is attached.
     fn publish(&self, session_id: &str, event: String, data: Value) -> Option<u64> {
-        let mut map = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut map = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let session = map.get_mut(session_id)?;
         session.seq += 1;
         session.seen = Instant::now();
@@ -128,7 +147,12 @@ impl Sessions {
     }
 
     fn touch(&self, session_id: &str) {
-        if let Some(s) = self.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get_mut(session_id) {
+        if let Some(s) = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_mut(session_id)
+        {
             s.seen = Instant::now();
         }
     }
@@ -200,55 +224,85 @@ pub async fn handler(State(state): State<Arc<AppState>>, ws: WebSocketUpgrade) -
 
 async fn run(socket: WebSocket, state: Arc<AppState>) {
     let (mut sink, mut stream) = socket.split();
-    if send_json(&mut sink, json!({ "op": OP_HELLO, "d": { "heartbeat_interval": 41250 } })).await.is_err() {
+    if send_json(
+        &mut sink,
+        json!({ "op": OP_HELLO, "d": { "heartbeat_interval": 41250 } }),
+    )
+    .await
+    .is_err()
+    {
         return;
     }
 
     // Handshake: IDENTIFY or RESUME.
     let (sid, user, live, last_seq) = loop {
-        let Some(Ok(msg)) = stream.next().await else { return };
+        let Some(Ok(msg)) = stream.next().await else {
+            return;
+        };
         let WsMessage::Text(text) = msg else {
-            if matches!(msg, WsMessage::Close(_)) { return; }
+            if matches!(msg, WsMessage::Close(_)) {
+                return;
+            }
             continue;
         };
-        let Ok(value) = serde_json::from_str::<Value>(&text) else { continue };
+        let Ok(value) = serde_json::from_str::<Value>(&text) else {
+            continue;
+        };
         let op = value.get("op").and_then(|o| o.as_u64()).unwrap_or(0) as u8;
         let d = value.get("d").cloned().unwrap_or(Value::Null);
         match op {
             OP_HEARTBEAT => {
-                let _ = send_json(&mut sink, json!({ "op": OP_HEARTBEAT_ACK, "d": Value::Null })).await;
+                let _ = send_json(
+                    &mut sink,
+                    json!({ "op": OP_HEARTBEAT_ACK, "d": Value::Null }),
+                )
+                .await;
             }
             OP_IDENTIFY => {
                 let Ok(ident) = serde_json::from_value::<Identify>(d) else {
-                    let _ = send_json(&mut sink, json!({ "op": OP_INVALID_SESSION, "d": false })).await;
+                    let _ =
+                        send_json(&mut sink, json!({ "op": OP_INVALID_SESSION, "d": false })).await;
                     return;
                 };
                 let Some((id, _is_bot)) = auth_token(&state, &ident.token) else {
-                    let _ = send_json(&mut sink, json!({ "op": OP_INVALID_SESSION, "d": false })).await;
+                    let _ =
+                        send_json(&mut sink, json!({ "op": OP_INVALID_SESSION, "d": false })).await;
                     return;
                 };
-                let intents = if ident.intents == 0 { ALL_INTENTS } else { ident.intents };
+                let intents = if ident.intents == 0 {
+                    ALL_INTENTS
+                } else {
+                    ident.intents
+                };
                 let (sid, live) = state.v10.create(id, intents);
                 mark_online(&state, id).await;
                 let ready = ready_payload(&state, id, &sid);
-                let _ = send_json(&mut sink, json!({ "op": OP_DISPATCH, "t": "READY", "s": 0, "d": ready })).await;
+                let _ = send_json(
+                    &mut sink,
+                    json!({ "op": OP_DISPATCH, "t": "READY", "s": 0, "d": ready }),
+                )
+                .await;
                 break (sid, id, live, 0u64);
             }
             OP_RESUME => {
                 let Ok(res) = serde_json::from_value::<Resume>(d) else {
-                    let _ = send_json(&mut sink, json!({ "op": OP_INVALID_SESSION, "d": false })).await;
+                    let _ =
+                        send_json(&mut sink, json!({ "op": OP_INVALID_SESSION, "d": false })).await;
                     return;
                 };
                 let Some((id, _is_bot)) = auth_token(&state, &res.token) else {
-                    let _ = send_json(&mut sink, json!({ "op": OP_INVALID_SESSION, "d": false })).await;
+                    let _ =
+                        send_json(&mut sink, json!({ "op": OP_INVALID_SESSION, "d": false })).await;
                     return;
                 };
                 if !state.v10.exists_for(&res.session_id, id) {
-                    let _ = send_json(&mut sink, json!({ "op": OP_INVALID_SESSION, "d": false })).await;
+                    let _ =
+                        send_json(&mut sink, json!({ "op": OP_INVALID_SESSION, "d": false })).await;
                     return;
                 }
                 let Some(live) = state.v10.subscribe(&res.session_id) else {
-                    let _ = send_json(&mut sink, json!({ "op": OP_INVALID_SESSION, "d": false })).await;
+                    let _ =
+                        send_json(&mut sink, json!({ "op": OP_INVALID_SESSION, "d": false })).await;
                     return;
                 };
                 for item in state.v10.since(&res.session_id, res.seq) {
@@ -313,8 +367,13 @@ async fn run(socket: WebSocket, state: Arc<AppState>) {
     let _ = online;
 }
 
-async fn send_json(sink: &mut futures_util::stream::SplitSink<WebSocket, WsMessage>, value: Value) -> Result<(), ()> {
-    sink.send(WsMessage::Text(value.to_string().into())).await.map_err(|_| ())
+async fn send_json(
+    sink: &mut futures_util::stream::SplitSink<WebSocket, WsMessage>,
+    value: Value,
+) -> Result<(), ()> {
+    sink.send(WsMessage::Text(value.to_string().into()))
+        .await
+        .map_err(|_| ())
 }
 
 fn auth_token(state: &AppState, raw: &str) -> Option<(Id, bool)> {
@@ -327,11 +386,15 @@ fn auth_token(state: &AppState, raw: &str) -> Option<(Id, bool)> {
         }
         return Some((id, true));
     }
-    conn.query_row("SELECT user_id FROM sessions WHERE token=?1", rusqlite::params![store::hash_bot_token(token)], |r| r.get(0))
-        .optional()
-        .ok()
-        .flatten()
-        .map(|id| (id, false))
+    conn.query_row(
+        "SELECT user_id FROM sessions WHERE token=?1",
+        rusqlite::params![store::hash_bot_token(token)],
+        |r| r.get(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+    .map(|id| (id, false))
 }
 
 fn ready_payload(state: &AppState, user_id: Id, session_id: &str) -> Value {
@@ -364,9 +427,16 @@ async fn mark_online(state: &AppState, user: Id) {
     };
     if first {
         let conn = state.store.conn();
-        conn.execute("UPDATE users SET status='online' WHERE id=?1", rusqlite::params![user]).ok();
+        conn.execute(
+            "UPDATE users SET status='online' WHERE id=?1",
+            rusqlite::params![user],
+        )
+        .ok();
     }
-    let _ = state.tx.send(GatewayEvent::PresenceUpdate { user_id: user, status: Presence::Online });
+    let _ = state.tx.send(GatewayEvent::PresenceUpdate {
+        user_id: user,
+        status: Presence::Online,
+    });
 }
 
 async fn mark_offline(state: &AppState, user: Id) {
@@ -386,16 +456,30 @@ async fn mark_offline(state: &AppState, user: Id) {
     };
     if last {
         let conn = state.store.conn();
-        conn.execute("UPDATE users SET status='offline' WHERE id=?1", rusqlite::params![user]).ok();
-        let _ = state.tx.send(GatewayEvent::PresenceUpdate { user_id: user, status: Presence::Offline });
+        conn.execute(
+            "UPDATE users SET status='offline' WHERE id=?1",
+            rusqlite::params![user],
+        )
+        .ok();
+        let _ = state.tx.send(GatewayEvent::PresenceUpdate {
+            user_id: user,
+            status: Presence::Offline,
+        });
     }
 }
 
-fn dispatch(state: &AppState, user: Id, intents: u64, event: &GatewayEvent) -> Option<(String, Value)> {
+fn dispatch(
+    state: &AppState,
+    user: Id,
+    intents: u64,
+    event: &GatewayEvent,
+) -> Option<(String, Value)> {
     let conn = state.store.conn();
     let allow_content = intents & INTENT_MESSAGE_CONTENT != 0;
     match event {
-        GatewayEvent::MessageCreate(m) | GatewayEvent::MessageUpdate(m) | GatewayEvent::ReactionUpdate(m) => {
+        GatewayEvent::MessageCreate(m)
+        | GatewayEvent::MessageUpdate(m)
+        | GatewayEvent::ReactionUpdate(m) => {
             let channel = store::channel_by_id(&conn, m.channel_id)?;
             let (needed, is_dm) = if channel.guild_id.is_some() {
                 (INTENT_GUILD_MESSAGES, false)
@@ -411,12 +495,23 @@ fn dispatch(state: &AppState, user: Id, intents: u64, event: &GatewayEvent) -> O
                     obj.insert("content".into(), Value::String(String::new()));
                 }
             }
-            let name = if matches!(event, GatewayEvent::MessageCreate(_)) { "MESSAGE_CREATE" } else { "MESSAGE_UPDATE" };
+            let name = if matches!(event, GatewayEvent::MessageCreate(_)) {
+                "MESSAGE_CREATE"
+            } else {
+                "MESSAGE_UPDATE"
+            };
             Some((name.into(), json))
         }
-        GatewayEvent::MessageDelete { channel_id, message_id } => {
+        GatewayEvent::MessageDelete {
+            channel_id,
+            message_id,
+        } => {
             let channel = store::channel_by_id(&conn, *channel_id)?;
-            let needed = if channel.guild_id.is_some() { INTENT_GUILD_MESSAGES } else { INTENT_DIRECT_MESSAGES };
+            let needed = if channel.guild_id.is_some() {
+                INTENT_GUILD_MESSAGES
+            } else {
+                INTENT_DIRECT_MESSAGES
+            };
             if intents & needed == 0 || !visible(&conn, *channel_id, user) {
                 return None;
             }
@@ -425,9 +520,17 @@ fn dispatch(state: &AppState, user: Id, intents: u64, event: &GatewayEvent) -> O
                 json!({ "id": message_id.to_string(), "channel_id": channel_id.to_string(), "guild_id": channel.guild_id.map(|g| g.to_string()) }),
             ))
         }
-        GatewayEvent::TypingStart { channel_id, user_id, .. } => {
+        GatewayEvent::TypingStart {
+            channel_id,
+            user_id,
+            ..
+        } => {
             let channel = store::channel_by_id(&conn, *channel_id)?;
-            let needed = if channel.guild_id.is_some() { INTENT_GUILD_MESSAGES } else { INTENT_DIRECT_MESSAGES };
+            let needed = if channel.guild_id.is_some() {
+                INTENT_GUILD_MESSAGES
+            } else {
+                INTENT_DIRECT_MESSAGES
+            };
             if intents & needed == 0 {
                 return None;
             }
@@ -466,10 +569,17 @@ fn dispatch(state: &AppState, user: Id, intents: u64, event: &GatewayEvent) -> O
                     return None;
                 }
             }
-            let name = if matches!(event, GatewayEvent::ChannelCreate(_)) { "CHANNEL_CREATE" } else { "CHANNEL_UPDATE" };
+            let name = if matches!(event, GatewayEvent::ChannelCreate(_)) {
+                "CHANNEL_CREATE"
+            } else {
+                "CHANNEL_UPDATE"
+            };
             Some((name.into(), channel_json(c)))
         }
-        GatewayEvent::ChannelDelete { channel_id, guild_id } => {
+        GatewayEvent::ChannelDelete {
+            channel_id,
+            guild_id,
+        } => {
             if intents & INTENT_GUILDS == 0 {
                 return None;
             }
@@ -478,13 +588,20 @@ fn dispatch(state: &AppState, user: Id, intents: u64, event: &GatewayEvent) -> O
                     return None;
                 }
             }
-            Some(("CHANNEL_DELETE".into(), json!({ "id": channel_id.to_string(), "guild_id": guild_id.map(|g| g.to_string()) })))
+            Some((
+                "CHANNEL_DELETE".into(),
+                json!({ "id": channel_id.to_string(), "guild_id": guild_id.map(|g| g.to_string()) }),
+            ))
         }
         GatewayEvent::GuildCreate(g) | GatewayEvent::GuildUpdate(g) => {
             if intents & INTENT_GUILDS == 0 || !member(&conn, g.id, user) {
                 return None;
             }
-            let name = if matches!(event, GatewayEvent::GuildCreate(_)) { "GUILD_CREATE" } else { "GUILD_UPDATE" };
+            let name = if matches!(event, GatewayEvent::GuildCreate(_)) {
+                "GUILD_CREATE"
+            } else {
+                "GUILD_UPDATE"
+            };
             Some((name.into(), guild_json(&conn, g, user)))
         }
         GatewayEvent::GuildDelete { guild_id } => {
@@ -537,12 +654,14 @@ fn dispatch(state: &AppState, user: Id, intents: u64, event: &GatewayEvent) -> O
             }
             Some(("INTERACTION_CREATE".into(), payload.clone()))
         }
-        GatewayEvent::RelationshipUpdate(r) => {
-            Some(("RELATIONSHIP_ADD".into(), json!({ "id": r.user.id.to_string(), "type": 1, "user": user_json(&r.user) })))
-        }
-        GatewayEvent::RelationshipRemove { user_id } => {
-            Some(("RELATIONSHIP_REMOVE".into(), json!({ "id": user_id.to_string() })))
-        }
+        GatewayEvent::RelationshipUpdate(r) => Some((
+            "RELATIONSHIP_ADD".into(),
+            json!({ "id": r.user.id.to_string(), "type": 1, "user": user_json(&r.user) }),
+        )),
+        GatewayEvent::RelationshipRemove { user_id } => Some((
+            "RELATIONSHIP_REMOVE".into(),
+            json!({ "id": user_id.to_string() }),
+        )),
         GatewayEvent::ReadUpdate { .. }
         | GatewayEvent::GuildMembers { .. }
         | GatewayEvent::MemberRemove { .. }
@@ -565,7 +684,9 @@ fn member(conn: &rusqlite::Connection, guild: Id, user: Id) -> bool {
 }
 
 fn visible(conn: &rusqlite::Connection, channel: Id, user: Id) -> bool {
-    let Some(channel) = store::channel_by_id(conn, channel) else { return false };
+    let Some(channel) = store::channel_by_id(conn, channel) else {
+        return false;
+    };
     if channel.guild_id.is_some() {
         store::can_view(conn, channel.id, user)
     } else {

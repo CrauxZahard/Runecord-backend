@@ -1,17 +1,21 @@
 //! bootstrap.
 
 use super::*;
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use std::collections::{BTreeMap, HashMap};
 
 pub fn bootstrap(conn: &Connection, me: Id) -> Bootstrap {
-    let Some(user) = user_by_id(conn, me) else { return Bootstrap::default() };
+    let Some(user) = user_by_id(conn, me) else {
+        return Bootstrap::default();
+    };
     let mut users: HashMap<Id, User> = HashMap::new();
     users.insert(user.id, user.clone());
 
     let guild_ids: Vec<Id> = {
         let mut out = Vec::new();
-        if let Ok(mut stmt) = conn.prepare("SELECT guild_id FROM guild_members WHERE user_id=?1 ORDER BY joined_at") {
+        if let Ok(mut stmt) =
+            conn.prepare("SELECT guild_id FROM guild_members WHERE user_id=?1 ORDER BY joined_at")
+        {
             if let Ok(rows) = stmt.query_map(params![me], |r| r.get::<_, Id>(0)) {
                 out.extend(rows.flatten());
             }
@@ -48,7 +52,10 @@ pub fn bootstrap(conn: &Connection, me: Id) -> Bootstrap {
                         }
                     }
                 }
-                dms.push(DmChannel { channel, recipients });
+                dms.push(DmChannel {
+                    channel,
+                    recipients,
+                });
             }
         }
     }
@@ -73,8 +80,16 @@ pub fn bootstrap(conn: &Connection, me: Id) -> Bootstrap {
     }
 
     let mut reads = Vec::new();
-    if let Ok(mut stmt) = conn.prepare("SELECT channel_id, last_read_id FROM reads WHERE user_id=?1") {
-        if let Ok(rows) = stmt.query_map(params![me], |r| Ok(ReadState { channel_id: r.get(0)?, last_read_id: r.get(1)?, mention_count: 0 })) {
+    if let Ok(mut stmt) =
+        conn.prepare("SELECT channel_id, last_read_id FROM reads WHERE user_id=?1")
+    {
+        if let Ok(rows) = stmt.query_map(params![me], |r| {
+            Ok(ReadState {
+                channel_id: r.get(0)?,
+                last_read_id: r.get(1)?,
+                mention_count: 0,
+            })
+        }) {
             reads.extend(rows.flatten());
         }
     }
@@ -87,7 +102,10 @@ pub fn bootstrap(conn: &Connection, me: Id) -> Bootstrap {
     }
 
     let presences = users.iter().map(|(id, u)| (*id, u.status)).collect();
-    let emojis = guild_ids.iter().flat_map(|g| guild_emojis(conn, *g)).collect();
+    let emojis = guild_ids
+        .iter()
+        .flat_map(|g| guild_emojis(conn, *g))
+        .collect();
     Bootstrap {
         user,
         guilds,
@@ -105,5 +123,3 @@ pub fn bootstrap(conn: &Connection, me: Id) -> Bootstrap {
 // ---------------------------------------------------------------------------
 // Seed
 // ---------------------------------------------------------------------------
-
-

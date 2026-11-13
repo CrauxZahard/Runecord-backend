@@ -1,16 +1,19 @@
 //! users.
 
 use super::*;
-use crate::{store, AppState};
+use crate::{AppState, store};
+use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
-use axum::Json;
 use rusqlite::params;
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
 
-pub(crate) async fn bootstrap(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Result<Json<Bootstrap>, ApiError> {
+pub(crate) async fn bootstrap(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<Bootstrap>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let mut out = crate::store::Store::bootstrap(&state.store, me);
     out.voice_states = state
@@ -23,13 +26,19 @@ pub(crate) async fn bootstrap(State(state): State<Arc<AppState>>, headers: Heade
     Ok(Json(out))
 }
 
-pub(crate) async fn get_user(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(user): Path<Id>) -> Result<Json<User>, ApiError> {
+pub(crate) async fn get_user(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(user): Path<Id>,
+) -> Result<Json<User>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
     if !store::users_related(&conn, me, user) {
         return Err(forbidden());
     }
-    store::user_by_id(&conn, user).map(Json).ok_or_else(not_found)
+    store::user_by_id(&conn, user)
+        .map(Json)
+        .ok_or_else(not_found)
 }
 
 #[derive(Deserialize)]
@@ -56,9 +65,9 @@ pub(crate) async fn get_users_batch(
     Ok(Json(out))
 }
 
-
 #[derive(Deserialize)]
-pub(crate) struct MeBody {    display_name: Option<String>,
+pub(crate) struct MeBody {
+    display_name: Option<String>,
     avatar_color: Option<u32>,
     avatar_border: Option<u32>,
     banner_color: Option<u32>,
@@ -66,34 +75,65 @@ pub(crate) struct MeBody {    display_name: Option<String>,
     custom_status: Option<String>,
 }
 
-pub(crate) async fn update_me(State(state): State<Arc<AppState>>, headers: HeaderMap, Json(body): Json<MeBody>) -> Result<Json<User>, ApiError> {
+pub(crate) async fn update_me(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(body): Json<MeBody>,
+) -> Result<Json<User>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
     if let Some(name) = body.display_name.filter(|n| !n.trim().is_empty()) {
-        conn.execute("UPDATE users SET display_name=?1 WHERE id=?2", params![name.trim(), me]).map_err(internal)?;
+        conn.execute(
+            "UPDATE users SET display_name=?1 WHERE id=?2",
+            params![name.trim(), me],
+        )
+        .map_err(internal)?;
     }
     if let Some(color) = body.avatar_color {
-        conn.execute("UPDATE users SET avatar_color=?1 WHERE id=?2", params![color as i64, me]).map_err(internal)?;
+        conn.execute(
+            "UPDATE users SET avatar_color=?1 WHERE id=?2",
+            params![color as i64, me],
+        )
+        .map_err(internal)?;
     }
     if let Some(border) = body.avatar_border {
-        conn.execute("UPDATE users SET avatar_border=?1 WHERE id=?2", params![border as i64, me]).map_err(internal)?;
+        conn.execute(
+            "UPDATE users SET avatar_border=?1 WHERE id=?2",
+            params![border as i64, me],
+        )
+        .map_err(internal)?;
     }
     if let Some(banner) = body.banner_color {
-        conn.execute("UPDATE users SET banner_color=?1 WHERE id=?2", params![banner as i64, me]).map_err(internal)?;
+        conn.execute(
+            "UPDATE users SET banner_color=?1 WHERE id=?2",
+            params![banner as i64, me],
+        )
+        .map_err(internal)?;
     }
     if let Some(bio) = body.bio {
-        conn.execute("UPDATE users SET bio=?1 WHERE id=?2", params![bio, me]).map_err(internal)?;
+        conn.execute("UPDATE users SET bio=?1 WHERE id=?2", params![bio, me])
+            .map_err(internal)?;
     }
     if let Some(status) = body.custom_status {
-        conn.execute("UPDATE users SET custom_status=?1 WHERE id=?2", params![status, me]).map_err(internal)?;
+        conn.execute(
+            "UPDATE users SET custom_status=?1 WHERE id=?2",
+            params![status, me],
+        )
+        .map_err(internal)?;
     }
     let user = store::user_by_id(&conn, me).ok_or_else(not_found)?;
     drop(conn);
-    let _ = state.tx.send(GatewayEvent::UserUpdate(Box::new(user.clone())));
+    let _ = state
+        .tx
+        .send(GatewayEvent::UserUpdate(Box::new(user.clone())));
     Ok(Json(user))
 }
 
-pub(crate) async fn update_read(State(state): State<Arc<AppState>>, headers: HeaderMap, Json(body): Json<ReadUpdate>) -> Result<Json<serde_json::Value>, ApiError> {
+pub(crate) async fn update_read(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(body): Json<ReadUpdate>,
+) -> Result<Json<serde_json::Value>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
     conn.execute(
@@ -108,5 +148,3 @@ pub(crate) async fn update_read(State(state): State<Arc<AppState>>, headers: Hea
 // ---------------------------------------------------------------------------
 // Guilds and channels
 // ---------------------------------------------------------------------------
-
-

@@ -99,12 +99,23 @@ impl ChannelKind {
     pub fn is_textual(self) -> bool {
         matches!(
             self,
-            ChannelKind::Text | ChannelKind::Announcement | ChannelKind::Forum | ChannelKind::Thread | ChannelKind::Dm | ChannelKind::GroupDm
+            ChannelKind::Text
+                | ChannelKind::Announcement
+                | ChannelKind::Forum
+                | ChannelKind::Thread
+                | ChannelKind::Dm
+                | ChannelKind::GroupDm
         )
     }
 
     pub fn is_guild_text(self) -> bool {
-        matches!(self, ChannelKind::Text | ChannelKind::Announcement | ChannelKind::Forum | ChannelKind::Thread)
+        matches!(
+            self,
+            ChannelKind::Text
+                | ChannelKind::Announcement
+                | ChannelKind::Forum
+                | ChannelKind::Thread
+        )
     }
 }
 
@@ -493,7 +504,11 @@ pub struct VoiceState {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum RegisterRequest {
-    Register { username: String, display_name: String, password: String },
+    Register {
+        username: String,
+        display_name: String,
+        password: String,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -652,26 +667,59 @@ pub enum GatewayEvent {
     Ready(Box<Bootstrap>),
     MessageCreate(Box<Message>),
     MessageUpdate(Box<Message>),
-    MessageDelete { channel_id: Id, message_id: Id },
+    MessageDelete {
+        channel_id: Id,
+        message_id: Id,
+    },
     ReactionUpdate(Box<Message>),
-    TypingStart { channel_id: Id, user_id: Id, until_ms: i64 },
-    PresenceUpdate { user_id: Id, status: Presence },
+    TypingStart {
+        channel_id: Id,
+        user_id: Id,
+        until_ms: i64,
+    },
+    PresenceUpdate {
+        user_id: Id,
+        status: Presence,
+    },
     ChannelCreate(Box<Channel>),
     ChannelUpdate(Box<Channel>),
-    ChannelDelete { channel_id: Id, guild_id: Option<Id> },
+    ChannelDelete {
+        channel_id: Id,
+        guild_id: Option<Id>,
+    },
     GuildCreate(Box<Guild>),
     GuildUpdate(Box<Guild>),
-    GuildDelete { guild_id: Id },
+    GuildDelete {
+        guild_id: Id,
+    },
     MemberUpdate(Box<Member>),
-    MemberRemove { guild_id: Id, user_id: Id },
-    MemberCountUpdate { guild_id: Id, count: u32 },
-    GuildMembers { guild_id: Id, members: Vec<Member> },
+    MemberRemove {
+        guild_id: Id,
+        user_id: Id,
+    },
+    MemberCountUpdate {
+        guild_id: Id,
+        count: u32,
+    },
+    GuildMembers {
+        guild_id: Id,
+        members: Vec<Member>,
+    },
     RelationshipUpdate(Box<Relationship>),
-    RelationshipRemove { user_id: Id },
-    ReadUpdate { channel_id: Id, last_read_id: Option<Id>, mention_count: u32 },
+    RelationshipRemove {
+        user_id: Id,
+    },
+    ReadUpdate {
+        channel_id: Id,
+        last_read_id: Option<Id>,
+        mention_count: u32,
+    },
     UserUpdate(Box<User>),
     VoiceStateUpdate(Box<VoiceState>),
-    InteractionCreate { app_id: Id, payload: serde_json::Value },
+    InteractionCreate {
+        app_id: Id,
+        payload: serde_json::Value,
+    },
     ReadyCheck,
 }
 

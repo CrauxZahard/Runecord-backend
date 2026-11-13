@@ -2,8 +2,8 @@
 //! This runs beside the native API and uses the same store; the gateway it advertises still
 //! speaks Runecord's native event envelope until Phase 2 adds Discord opcodes/RESUME.
 
-use crate::store;
 use crate::AppState;
+use crate::store;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -11,7 +11,7 @@ use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use runecord_protocol::*;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 pub fn router(state: Arc<AppState>) -> Router {
@@ -27,17 +27,25 @@ pub fn router(state: Arc<AppState>) -> Router {
             put(add_member_role).delete(remove_member_role),
         )
         .route("/channels/{channel_id}", get(channel))
-        .route("/channels/{channel_id}/messages", get(list_messages).post(send_message))
+        .route(
+            "/channels/{channel_id}/messages",
+            get(list_messages).post(send_message),
+        )
         .route(
             "/channels/{channel_id}/messages/{message_id}",
-            get(single_message).patch(edit_message).delete(delete_message),
+            get(single_message)
+                .patch(edit_message)
+                .delete(delete_message),
         )
         .route(
             "/channels/{channel_id}/messages/{message_id}/reactions/{emoji}/@me",
             put(add_reaction).delete(remove_reaction),
         )
         .route("/channels/{channel_id}/pins", get(list_pins))
-        .route("/channels/{channel_id}/pins/{message_id}", put(add_pin).delete(remove_pin))
+        .route(
+            "/channels/{channel_id}/pins/{message_id}",
+            put(add_pin).delete(remove_pin),
+        )
         .route("/channels/{channel_id}/typing", post(typing))
         .route("/gateway", get(gateway))
         .route("/gateway/bot", get(gateway))
@@ -237,7 +245,10 @@ fn can_manage(conn: &rusqlite::Connection, guild: Id, user: Id, bit: u64) -> boo
 // Users and guilds
 // ---------------------------------------------------------------------------
 
-async fn me(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Result<Json<Value>, DiscordError> {
+async fn me(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, DiscordError> {
     let me = auth(&state, &headers)?;
     let conn = state.store.conn();
     let user = store::user_by_id(&conn, me).ok_or_else(unauthorized)?;
@@ -251,14 +262,22 @@ async fn me(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Result<Js
     Ok(Json(body))
 }
 
-async fn user(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<Id>) -> Result<Json<Value>, DiscordError> {
+async fn user(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<Id>,
+) -> Result<Json<Value>, DiscordError> {
     let _ = auth(&state, &headers)?;
     let conn = state.store.conn();
-    let user = store::user_by_id(&conn, id).ok_or_else(|| DiscordError(StatusCode::NOT_FOUND, 10013, "Unknown User".into()))?;
+    let user = store::user_by_id(&conn, id)
+        .ok_or_else(|| DiscordError(StatusCode::NOT_FOUND, 10013, "Unknown User".into()))?;
     Ok(Json(user_json(&user)))
 }
 
-async fn my_guilds(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Result<Json<Value>, DiscordError> {
+async fn my_guilds(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, DiscordError> {
     let me = auth(&state, &headers)?;
     let conn = state.store.conn();
     let mut out = Vec::new();
@@ -285,7 +304,11 @@ async fn my_guilds(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Re
     Ok(Json(Value::Array(out)))
 }
 
-async fn guild(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(guild_id): Path<Id>) -> Result<Json<Value>, DiscordError> {
+async fn guild(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild_id): Path<Id>,
+) -> Result<Json<Value>, DiscordError> {
     let me = auth(&state, &headers)?;
     let conn = state.store.conn();
     if !is_member(&conn, guild_id, me) {
@@ -295,7 +318,11 @@ async fn guild(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(guil
     Ok(Json(guild_json(&conn, &g, me)))
 }
 
-async fn guild_channels(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(guild_id): Path<Id>) -> Result<Json<Value>, DiscordError> {
+async fn guild_channels(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild_id): Path<Id>,
+) -> Result<Json<Value>, DiscordError> {
     let me = auth(&state, &headers)?;
     let conn = state.store.conn();
     if !is_member(&conn, guild_id, me) {
@@ -309,7 +336,11 @@ async fn guild_channels(State(state): State<Arc<AppState>>, headers: HeaderMap, 
     Ok(Json(Value::Array(out)))
 }
 
-async fn guild_members(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(guild_id): Path<Id>) -> Result<Json<Value>, DiscordError> {
+async fn guild_members(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild_id): Path<Id>,
+) -> Result<Json<Value>, DiscordError> {
     let me = auth(&state, &headers)?;
     let conn = state.store.conn();
     if !is_member(&conn, guild_id, me) {
@@ -322,7 +353,11 @@ async fn guild_members(State(state): State<Arc<AppState>>, headers: HeaderMap, P
     Ok(Json(Value::Array(out)))
 }
 
-async fn channel(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(channel_id): Path<Id>) -> Result<Json<Value>, DiscordError> {
+async fn channel(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(channel_id): Path<Id>,
+) -> Result<Json<Value>, DiscordError> {
     let me = auth(&state, &headers)?;
     let conn = state.store.conn();
     let c = store::channel_by_id(&conn, channel_id).ok_or_else(unknown_channel)?;
@@ -355,8 +390,18 @@ async fn list_messages(
     if !store::can_view(&conn, channel_id, me) {
         return Err(missing_access());
     }
-    let messages = store::list_messages_window(&conn, channel_id, me, q.before, q.after, q.around, q.limit.unwrap_or(50));
-    Ok(Json(Value::Array(messages.iter().map(|m| message_json(&conn, m)).collect())))
+    let messages = store::list_messages_window(
+        &conn,
+        channel_id,
+        me,
+        q.before,
+        q.after,
+        q.around,
+        q.limit.unwrap_or(50),
+    );
+    Ok(Json(Value::Array(
+        messages.iter().map(|m| message_json(&conn, m)).collect(),
+    )))
 }
 
 #[derive(Deserialize)]
@@ -408,7 +453,11 @@ async fn send_message(
         rusqlite::params![id, channel_id, me, content, now_ms(), if reply_to.is_some() { "reply" } else { "default" }, reply_to],
     )
     .map_err(|e| bad(e.to_string()))?;
-    conn.execute("UPDATE channels SET last_message_id=?1 WHERE id=?2", rusqlite::params![id, channel_id]).ok();
+    conn.execute(
+        "UPDATE channels SET last_message_id=?1 WHERE id=?2",
+        rusqlite::params![id, channel_id],
+    )
+    .ok();
     conn.execute(
         "INSERT INTO reads(user_id, channel_id, last_read_id) VALUES(?1,?2,?3)
          ON CONFLICT(user_id, channel_id) DO UPDATE SET last_read_id=excluded.last_read_id",
@@ -418,7 +467,9 @@ async fn send_message(
     let msg = store::message_by_id(&conn, id, me).ok_or_else(unknown_message)?;
     let body_json = message_json(&conn, &msg);
     drop(conn);
-    let _ = state.tx.send(GatewayEvent::MessageCreate(Box::new(msg.clone())));
+    let _ = state
+        .tx
+        .send(GatewayEvent::MessageCreate(Box::new(msg.clone())));
     Ok(Json(body_json))
 }
 
@@ -452,11 +503,18 @@ async fn edit_message(
 ) -> Result<Json<Value>, DiscordError> {
     let me = auth(&state, &headers)?;
     let conn = state.store.conn();
-    let Some(msg) = store::message_by_id(&conn, message_id, me) else { return Err(unknown_message()) };
+    let Some(msg) = store::message_by_id(&conn, message_id, me) else {
+        return Err(unknown_message());
+    };
     if msg.channel_id != channel_id {
         return Err(unknown_message());
     }
-    if msg.author_id != me && !has(store::channel_permissions(&conn, channel_id, me), perm::MANAGE_MESSAGES) {
+    if msg.author_id != me
+        && !has(
+            store::channel_permissions(&conn, channel_id, me),
+            perm::MANAGE_MESSAGES,
+        )
+    {
         return Err(missing_access());
     }
     conn.execute(
@@ -478,17 +536,35 @@ async fn delete_message(
 ) -> Result<StatusCode, DiscordError> {
     let me = auth(&state, &headers)?;
     let conn = state.store.conn();
-    let Some(msg) = store::message_by_id(&conn, message_id, me) else { return Err(unknown_message()) };
+    let Some(msg) = store::message_by_id(&conn, message_id, me) else {
+        return Err(unknown_message());
+    };
     if msg.channel_id != channel_id {
         return Err(unknown_message());
     }
-    if msg.author_id != me && !has(store::channel_permissions(&conn, channel_id, me), perm::MANAGE_MESSAGES) {
+    if msg.author_id != me
+        && !has(
+            store::channel_permissions(&conn, channel_id, me),
+            perm::MANAGE_MESSAGES,
+        )
+    {
         return Err(missing_access());
     }
-    conn.execute("DELETE FROM messages WHERE id=?1", rusqlite::params![message_id]).ok();
-    conn.execute("DELETE FROM reactions WHERE message_id=?1", rusqlite::params![message_id]).ok();
+    conn.execute(
+        "DELETE FROM messages WHERE id=?1",
+        rusqlite::params![message_id],
+    )
+    .ok();
+    conn.execute(
+        "DELETE FROM reactions WHERE message_id=?1",
+        rusqlite::params![message_id],
+    )
+    .ok();
     drop(conn);
-    let _ = state.tx.send(GatewayEvent::MessageDelete { channel_id, message_id });
+    let _ = state.tx.send(GatewayEvent::MessageDelete {
+        channel_id,
+        message_id,
+    });
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -496,8 +572,17 @@ async fn delete_message(
 // Reactions, pins, typing
 // ---------------------------------------------------------------------------
 
-fn toggle_reaction(conn: &rusqlite::Connection, channel_id: Id, message_id: Id, me: Id, emoji: &str, add: bool) -> Result<(), DiscordError> {
-    let Some(msg) = store::message_by_id(conn, message_id, me) else { return Err(unknown_message()) };
+fn toggle_reaction(
+    conn: &rusqlite::Connection,
+    channel_id: Id,
+    message_id: Id,
+    me: Id,
+    emoji: &str,
+    add: bool,
+) -> Result<(), DiscordError> {
+    let Some(msg) = store::message_by_id(conn, message_id, me) else {
+        return Err(unknown_message());
+    };
     if msg.channel_id != channel_id {
         return Err(unknown_message());
     }
@@ -546,14 +631,20 @@ async fn remove_reaction(
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn list_pins(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(channel_id): Path<Id>) -> Result<Json<Value>, DiscordError> {
+async fn list_pins(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(channel_id): Path<Id>,
+) -> Result<Json<Value>, DiscordError> {
     let me = auth(&state, &headers)?;
     let conn = state.store.conn();
     if !store::can_view(&conn, channel_id, me) {
         return Err(missing_access());
     }
     let mut out = Vec::new();
-    if let Ok(mut stmt) = conn.prepare("SELECT id FROM messages WHERE channel_id=?1 AND pinned=1 ORDER BY id DESC") {
+    if let Ok(mut stmt) =
+        conn.prepare("SELECT id FROM messages WHERE channel_id=?1 AND pinned=1 ORDER BY id DESC")
+    {
         if let Ok(rows) = stmt.query_map(rusqlite::params![channel_id], |r| r.get::<_, Id>(0)) {
             for id in rows.flatten() {
                 if let Some(m) = store::message_by_id(&conn, id, me) {
@@ -572,11 +663,17 @@ async fn add_pin(
 ) -> Result<StatusCode, DiscordError> {
     let me = auth(&state, &headers)?;
     let conn = state.store.conn();
-    let Some(msg) = store::message_by_id(&conn, message_id, me) else { return Err(unknown_message()) };
+    let Some(msg) = store::message_by_id(&conn, message_id, me) else {
+        return Err(unknown_message());
+    };
     if msg.channel_id != channel_id {
         return Err(unknown_message());
     }
-    conn.execute("UPDATE messages SET pinned=1 WHERE id=?1", rusqlite::params![message_id]).ok();
+    conn.execute(
+        "UPDATE messages SET pinned=1 WHERE id=?1",
+        rusqlite::params![message_id],
+    )
+    .ok();
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -587,15 +684,25 @@ async fn remove_pin(
 ) -> Result<StatusCode, DiscordError> {
     let me = auth(&state, &headers)?;
     let conn = state.store.conn();
-    let Some(msg) = store::message_by_id(&conn, message_id, me) else { return Err(unknown_message()) };
+    let Some(msg) = store::message_by_id(&conn, message_id, me) else {
+        return Err(unknown_message());
+    };
     if msg.channel_id != channel_id {
         return Err(unknown_message());
     }
-    conn.execute("UPDATE messages SET pinned=0 WHERE id=?1", rusqlite::params![message_id]).ok();
+    conn.execute(
+        "UPDATE messages SET pinned=0 WHERE id=?1",
+        rusqlite::params![message_id],
+    )
+    .ok();
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn typing(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(channel_id): Path<Id>) -> Result<StatusCode, DiscordError> {
+async fn typing(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(channel_id): Path<Id>,
+) -> Result<StatusCode, DiscordError> {
     let me = auth(&state, &headers)?;
     {
         let conn = state.store.conn();
@@ -603,7 +710,11 @@ async fn typing(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(cha
             return Err(missing_access());
         }
     }
-    let _ = state.tx.send(GatewayEvent::TypingStart { channel_id, user_id: me, until_ms: now_ms() + 8000 });
+    let _ = state.tx.send(GatewayEvent::TypingStart {
+        channel_id,
+        user_id: me,
+        until_ms: now_ms() + 8000,
+    });
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -632,7 +743,11 @@ async fn add_member_role(
         .flatten()
         .is_some();
     if !role_exists {
-        return Err(DiscordError(StatusCode::NOT_FOUND, 10011, "Unknown Role".into()));
+        return Err(DiscordError(
+            StatusCode::NOT_FOUND,
+            10011,
+            "Unknown Role".into(),
+        ));
     }
     conn.execute(
         "INSERT OR IGNORE INTO member_roles(guild_id, user_id, role_id) VALUES(?1,?2,?3)",

@@ -63,7 +63,9 @@ impl<K: Eq + Hash + Clone, V: Clone> BoundedCache<K, V> {
     pub fn put(&mut self, key: K, value: V) {
         let weight = (self.weight_of)(&value);
         if let Some(previous) = self.entries.insert(key.clone(), value) {
-            self.total_weight = self.total_weight.saturating_sub((self.weight_of)(&previous));
+            self.total_weight = self
+                .total_weight
+                .saturating_sub((self.weight_of)(&previous));
         } else {
             self.order.push_back(key);
         }

@@ -1,4 +1,4 @@
-﻿//! Runecord's local server: SQLite, HTTP API, and the WebSocket gateway.
+//! Runecord's local server: SQLite, HTTP API, and the WebSocket gateway.
 
 mod api;
 mod cache;
@@ -28,9 +28,7 @@ pub struct AppState {
     pub guild_cache: std::sync::Mutex<
         cache::BoundedCache<(i64, i64, i64), std::sync::Arc<runecord_protocol::GuildDetail>>,
     >,
-    pub thumb_cache: std::sync::Mutex<
-        cache::BoundedCache<(String, u32), axum::body::Bytes>,
-    >,
+    pub thumb_cache: std::sync::Mutex<cache::BoundedCache<(String, u32), axum::body::Bytes>>,
 }
 
 #[derive(Clone)]
@@ -135,7 +133,10 @@ async fn main() {
         .nest("/api/v1", compat::router(state.clone()))
         .merge(platform::router(state.clone()))
         .layer(DefaultBodyLimit::max(48 * 1024 * 1024))
-        .layer(axum::middleware::from_fn_with_state(state.clone(), ratelimit::middleware));
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            ratelimit::middleware,
+        ));
 
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
     let listener = match tokio::net::TcpListener::bind(addr).await {

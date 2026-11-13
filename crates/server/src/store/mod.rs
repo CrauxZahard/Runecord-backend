@@ -10,7 +10,7 @@ pub use sqlite::*;
 
 use crate::crypto;
 use runecord_protocol::{Bootstrap, Id, User};
-use rusqlite::{params, Connection, OptionalExtension, MAIN_DB};
+use rusqlite::{Connection, MAIN_DB, OptionalExtension, params};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Mutex, MutexGuard};
@@ -28,7 +28,10 @@ impl SqliteStore {
         if let Ok(encrypted) = std::fs::read(path) {
             if let Some(plain) = crypto::open(&key, &encrypted) {
                 let mut slice: &[u8] = &plain;
-                if conn.deserialize_read_exact(MAIN_DB, &mut slice, plain.len(), false).is_err() {
+                if conn
+                    .deserialize_read_exact(MAIN_DB, &mut slice, plain.len(), false)
+                    .is_err()
+                {
                     eprintln!("runecord: encrypted database could not be opened; starting empty");
                 }
             } else {
@@ -46,15 +49,22 @@ impl SqliteStore {
         Ok(store)
     }
 
-    pub fn key(&self) -> [u8; 32] { self.key }
+    pub fn key(&self) -> [u8; 32] {
+        self.key
+    }
 
     pub fn conn(&self) -> MutexGuard<'_, Connection> {
-        self.conn.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+        self.conn
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// Persists the in-memory database as an encrypted snapshot when writes happened.
     pub fn flush_if_changed(&self) {
-        let conn = self.conn.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let conn = self
+            .conn
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let total = conn.total_changes() as i64;
         if total == self.flushed_changes.load(Ordering::Relaxed) {
             return;
@@ -71,14 +81,18 @@ impl SqliteStore {
     }
 
     pub fn flush_now(&self) {
-        let conn = self.conn.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let conn = self
+            .conn
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Ok(data) = conn.serialize(MAIN_DB) {
             let encrypted = crypto::seal(&self.key, &data);
             if let Some(dir) = self.path.parent() {
                 let _ = std::fs::create_dir_all(dir);
             }
             if std::fs::write(&self.path, encrypted).is_ok() {
-                self.flushed_changes.store(conn.total_changes() as i64, Ordering::Relaxed);
+                self.flushed_changes
+                    .store(conn.total_changes() as i64, Ordering::Relaxed);
             }
         }
     }
@@ -90,7 +104,11 @@ impl SqliteStore {
     pub fn session_user(&self, token: &str) -> Option<Id> {
         let hash = sqlite::hash_bot_token(token);
         self.conn()
-            .query_row("SELECT user_id FROM sessions WHERE token=?1", params![hash], |r| r.get(0))
+            .query_row(
+                "SELECT user_id FROM sessions WHERE token=?1",
+                params![hash],
+                |r| r.get(0),
+            )
             .optional()
             .ok()
             .flatten()

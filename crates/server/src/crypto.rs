@@ -33,5 +33,7 @@ pub fn open(key: &[u8; 32], data: &[u8]) -> Option<Vec<u8>> {
         return None;
     }
     let cipher = Aes256Gcm::new(key.into());
-    cipher.decrypt(Nonce::from_slice(&data[..12]), &data[12..]).ok()
+    cipher
+        .decrypt(Nonce::from_slice(&data[..12]), &data[12..])
+        .ok()
 }

@@ -1,10 +1,10 @@
 //! media.
 
 use super::*;
-use crate::{store, AppState};
+use crate::{AppState, store};
+use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
-use axum::Json;
 use rusqlite::params;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -26,8 +26,16 @@ pub(crate) async fn upload(
     if body.len() > 48 * 1024 * 1024 {
         return Err(bad("File is larger than 48 MB."));
     }
-    let clean: String = q.name.chars().filter(|c| !matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')).collect();
-    let filename = if clean.trim().is_empty() { "file".to_string() } else { clean };
+    let clean: String = q
+        .name
+        .chars()
+        .filter(|c| !matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'))
+        .collect();
+    let filename = if clean.trim().is_empty() {
+        "file".to_string()
+    } else {
+        clean
+    };
     let ext = filename.rsplit('.').next().unwrap_or("bin").to_lowercase();
     let hash = store::hash_bytes(&body);
     let stored = format!("{hash}.{ext}");
@@ -62,7 +70,6 @@ pub(crate) async fn upload(
 // Search
 // ---------------------------------------------------------------------------
 
-
 #[derive(Deserialize, Default)]
 pub(crate) struct CdnQuery {
     #[serde(default)]
@@ -79,8 +86,12 @@ pub(crate) async fn cdn_file(
     let hash = file.split('.').next().unwrap_or("").to_string();
     let content_type: String = {
         let conn = state.store.conn();
-        conn.query_row("SELECT content_type FROM cdn_assets WHERE hash=?1", params![hash], |r| r.get(0))
-            .unwrap_or_else(|_| "application/octet-stream".to_string())
+        conn.query_row(
+            "SELECT content_type FROM cdn_assets WHERE hash=?1",
+            params![hash],
+            |r| r.get(0),
+        )
+        .unwrap_or_else(|_| "application/octet-stream".to_string())
     };
     let path = state.data_dir.join("cdn").join(&file);
     let Ok(sealed) = std::fs::read(path) else {
@@ -101,7 +112,10 @@ pub(crate) async fn cdn_file(
             {
                 return image_response(hit);
             }
-            let thumb_path = state.data_dir.join("thumbs").join(format!("{hash}-{width}.enc"));
+            let thumb_path = state
+                .data_dir
+                .join("thumbs")
+                .join(format!("{hash}-{width}.enc"));
             if let Ok(sealed) = std::fs::read(&thumb_path) {
                 if let Some(thumb) = crate::crypto::open(&state.store.key(), &sealed) {
                     let thumb = Bytes::from(thumb);
@@ -119,11 +133,17 @@ pub(crate) async fn cdn_file(
                     let target_h = ((h as f32) * (width as f32 / w as f32)).round().max(1.0) as u32;
                     let thumb = image::imageops::thumbnail(&image, width, target_h);
                     let mut out = Vec::new();
-                    if thumb.write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png).is_ok() {
+                    if thumb
+                        .write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
+                        .is_ok()
+                    {
                         if let Some(dir) = thumb_path.parent() {
                             let _ = std::fs::create_dir_all(dir);
                         }
-                        let _ = std::fs::write(&thumb_path, crate::crypto::seal(&state.store.key(), &out));
+                        let _ = std::fs::write(
+                            &thumb_path,
+                            crate::crypto::seal(&state.store.key(), &out),
+                        );
                         let thumb = Bytes::from(out);
                         state
                             .thumb_cache
@@ -140,7 +160,10 @@ pub(crate) async fn cdn_file(
     (
         [
             ("content-type", content_type),
-            ("cache-control", "public, max-age=31536000, immutable".to_string()),
+            (
+                "cache-control",
+                "public, max-age=31536000, immutable".to_string(),
+            ),
         ],
         bytes,
     )
@@ -152,10 +175,12 @@ fn image_response(bytes: axum::body::Bytes) -> axum::response::Response {
     (
         [
             ("content-type", "image/png".to_string()),
-            ("cache-control", "public, max-age=31536000, immutable".to_string()),
+            (
+                "cache-control",
+                "public, max-age=31536000, immutable".to_string(),
+            ),
         ],
         bytes,
     )
         .into_response()
 }
-

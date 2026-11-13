@@ -1,10 +1,10 @@
 //! auth.
 
 use super::*;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 pub(crate) fn hash_password(password: &str) -> String {
-    use argon2::password_hash::{rand_core::OsRng, PasswordHasher, SaltString};
+    use argon2::password_hash::{PasswordHasher, SaltString, rand_core::OsRng};
     let salt = SaltString::generate(&mut OsRng);
     let params = argon2::Params::new(8 * 1024, 1, 1, None).unwrap_or_default();
     let argon = argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
@@ -14,7 +14,14 @@ pub(crate) fn hash_password(password: &str) -> String {
         .unwrap_or_default()
 }
 
-pub(crate) fn insert_user(conn: &Connection, id: Id, username: &str, display_name: &str, color: u32, status: Presence) -> Id {
+pub(crate) fn insert_user(
+    conn: &Connection,
+    id: Id,
+    username: &str,
+    display_name: &str,
+    color: u32,
+    status: Presence,
+) -> Id {
     conn.execute(
         "INSERT INTO users(id, username, display_name, pass_hash, avatar_color, bio, custom_status, status, created_at)
          VALUES(?1,?2,?3,?4,?5,'','',?6,?7)",
@@ -23,7 +30,6 @@ pub(crate) fn insert_user(conn: &Connection, id: Id, username: &str, display_nam
     .ok();
     id
 }
-
 
 pub fn hash_bot_token(token: &str) -> String {
     hash_bytes(token.as_bytes())
@@ -48,7 +54,11 @@ pub fn bot_for_token(conn: &Connection, token: &str) -> Option<Id> {
     .flatten()
 }
 
-pub fn create_bot(conn: &Connection, owner: Id, display_name: &str) -> Result<(User, String), String> {
+pub fn create_bot(
+    conn: &Connection,
+    owner: Id,
+    display_name: &str,
+) -> Result<(User, String), String> {
     use rand::RngCore;
     let name = display_name.trim();
     if name.chars().count() < 2 || name.chars().count() > 32 {
@@ -126,12 +136,21 @@ pub fn delete_bot(conn: &Connection, owner: Id, bot: Id) -> bool {
     if !owned {
         return false;
     }
-    conn.execute("DELETE FROM bot_tokens WHERE bot_id=?1", params![bot]).ok();
-    conn.execute("DELETE FROM bot_owners WHERE bot_id=?1", params![bot]).ok();
-    conn.execute("DELETE FROM guild_members WHERE user_id=?1", params![bot]).ok();
-    conn.execute("DELETE FROM member_roles WHERE user_id=?1", params![bot]).ok();
-    conn.execute("DELETE FROM relationships WHERE user_id=?1 OR other_id=?1", params![bot]).ok();
-    conn.execute("DELETE FROM dm_members WHERE user_id=?1", params![bot]).ok();
+    conn.execute("DELETE FROM bot_tokens WHERE bot_id=?1", params![bot])
+        .ok();
+    conn.execute("DELETE FROM bot_owners WHERE bot_id=?1", params![bot])
+        .ok();
+    conn.execute("DELETE FROM guild_members WHERE user_id=?1", params![bot])
+        .ok();
+    conn.execute("DELETE FROM member_roles WHERE user_id=?1", params![bot])
+        .ok();
+    conn.execute(
+        "DELETE FROM relationships WHERE user_id=?1 OR other_id=?1",
+        params![bot],
+    )
+    .ok();
+    conn.execute("DELETE FROM dm_members WHERE user_id=?1", params![bot])
+        .ok();
     // Keep the user row so its message history still resolves an author; revoking the token
     // makes further bot logins impossible.
     true
@@ -149,7 +168,6 @@ pub fn add_bot_to_guild(conn: &Connection, bot: Id, guild: Id) -> bool {
 // Message windows (Discord `before` / `after` / `around` semantics)
 // ---------------------------------------------------------------------------
 
-
 pub fn regenerate_bot_token(conn: &Connection, bot: Id) -> String {
     let mut bytes = [0u8; 32];
     rand::RngCore::fill_bytes(&mut rand::rng(), &mut bytes);
@@ -161,7 +179,7 @@ pub fn regenerate_bot_token(conn: &Connection, bot: Id) -> String {
         "INSERT INTO bot_tokens(bot_id, token_hash, label, created_at) VALUES(?1,?2,'',?3)
          ON CONFLICT(bot_id) DO UPDATE SET token_hash=excluded.token_hash",
         params![bot, hash_bot_token(&token), now_ms()],
-    ).ok();
+    )
+    .ok();
     token
 }
-

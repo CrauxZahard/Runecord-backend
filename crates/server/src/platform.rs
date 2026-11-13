@@ -1,6 +1,6 @@
 //! Phase B/C platform endpoints: applications, interactions, webhooks, audit, emojis, voice.
 
-use crate::{api::ApiError, store, AppState, PendingInteraction};
+use crate::{AppState, PendingInteraction, api::ApiError, store};
 use axum::body::Bytes;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -8,26 +8,47 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use runecord_protocol::*;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/api/applications", get(list_apps).post(create_app))
         .route("/api/applications/{id}", axum::routing::delete(delete_app))
-        .route("/api/applications/{id}/install-link", post(app_install_link))
+        .route(
+            "/api/applications/{id}/install-link",
+            post(app_install_link),
+        )
         .route("/api/applications/install/{code}", post(install_app))
         .route("/api/applications/{id}/token", post(app_token))
-        .route("/api/applications/{id}/commands", get(list_commands).post(create_command))
-        .route("/api/applications/{id}/commands/{command}", axum::routing::delete(delete_command))
+        .route(
+            "/api/applications/{id}/commands",
+            get(list_commands).post(create_command),
+        )
+        .route(
+            "/api/applications/{id}/commands/{command}",
+            axum::routing::delete(delete_command),
+        )
         .route("/api/interactions", post(invoke_interaction))
-        .route("/api/interactions/{id}/{token}/callback", post(interaction_callback))
-        .route("/api/channels/{id}/webhooks", get(list_webhooks).post(create_webhook))
+        .route(
+            "/api/interactions/{id}/{token}/callback",
+            post(interaction_callback),
+        )
+        .route(
+            "/api/channels/{id}/webhooks",
+            get(list_webhooks).post(create_webhook),
+        )
         .route("/api/webhooks/{id}", axum::routing::delete(delete_webhook))
         .route("/api/webhooks/{id}/{token}", post(execute_webhook))
         .route("/api/guilds/{id}/audit-logs", get(audit_logs))
-        .route("/api/guilds/{id}/emojis", get(list_emojis).post(create_emoji))
-        .route("/api/guilds/{id}/emojis/{emoji}", axum::routing::delete(delete_emoji))
+        .route(
+            "/api/guilds/{id}/emojis",
+            get(list_emojis).post(create_emoji),
+        )
+        .route(
+            "/api/guilds/{id}/emojis/{emoji}",
+            axum::routing::delete(delete_emoji),
+        )
         .route("/api/voice", post(voice_state))
         .with_state(state)
 }
@@ -48,7 +69,12 @@ fn internal(msg: impl std::fmt::Display) -> ApiError {
     ApiError(StatusCode::INTERNAL_SERVER_ERROR, msg.to_string())
 }
 
-fn save_cdn(state: &AppState, bytes: &[u8], filename: &str, content_type: &str) -> Result<String, ApiError> {
+fn save_cdn(
+    state: &AppState,
+    bytes: &[u8],
+    filename: &str,
+    content_type: &str,
+) -> Result<String, ApiError> {
     let hash = store::hash_bytes(bytes);
     let ext = filename.rsplit('.').next().unwrap_or("bin").to_lowercase();
     let stored = format!("{hash}.{ext}");
@@ -59,7 +85,13 @@ fn save_cdn(state: &AppState, bytes: &[u8], filename: &str, content_type: &str) 
         let sealed = crate::crypto::seal(&state.store.key(), bytes);
         std::fs::write(&path, sealed).map_err(internal)?;
     }
-    store::record_cdn(&state.store.conn(), &hash, filename, content_type, bytes.len() as u64);
+    store::record_cdn(
+        &state.store.conn(),
+        &hash,
+        filename,
+        content_type,
+        bytes.len() as u64,
+    );
     Ok(format!("/cdn/{stored}"))
 }
 
@@ -76,13 +108,20 @@ struct CreateApp {
     color: u32,
 }
 
-async fn list_apps(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Result<Json<Vec<Application>>, ApiError> {
+async fn list_apps(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<Application>>, ApiError> {
     let me = crate::api::auth_human(&state, &headers)?;
     let conn = state.store.conn();
     Ok(Json(store::applications_owned(&conn, me)))
 }
 
-async fn create_app(State(state): State<Arc<AppState>>, headers: HeaderMap, Json(body): Json<CreateApp>) -> Result<Json<Value>, ApiError> {
+async fn create_app(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(body): Json<CreateApp>,
+) -> Result<Json<Value>, ApiError> {
     let me = crate::api::auth_human(&state, &headers)?;
     let name = body.name.trim();
     if name.chars().count() < 2 || name.chars().count() > 48 {
@@ -91,14 +130,22 @@ async fn create_app(State(state): State<Arc<AppState>>, headers: HeaderMap, Json
     let conn = state.store.conn();
     let mut app = store::create_application(&conn, me, name, body.color).map_err(bad)?;
     if !body.description.is_empty() {
-        conn.execute("UPDATE applications SET description=?1 WHERE id=?2", rusqlite::params![body.description, app.id]).ok();
+        conn.execute(
+            "UPDATE applications SET description=?1 WHERE id=?2",
+            rusqlite::params![body.description, app.id],
+        )
+        .ok();
         app.description = body.description;
     }
     let token = store::regenerate_bot_token(&conn, app.bot.id);
     Ok(Json(json!({ "application": app, "token": token })))
 }
 
-async fn delete_app(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<Id>) -> Result<Json<Value>, ApiError> {
+async fn delete_app(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<Id>,
+) -> Result<Json<Value>, ApiError> {
     let me = crate::api::auth_human(&state, &headers)?;
     if !store::delete_application(&state.store.conn(), me, id) {
         return Err(not_found());
@@ -106,7 +153,11 @@ async fn delete_app(State(state): State<Arc<AppState>>, headers: HeaderMap, Path
     Ok(Json(json!({ "ok": true })))
 }
 
-async fn app_install_link(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<Id>) -> Result<Json<Value>, ApiError> {
+async fn app_install_link(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<Id>,
+) -> Result<Json<Value>, ApiError> {
     let me = crate::api::auth_human(&state, &headers)?;
     let conn = state.store.conn();
     let app = store::application_by_id(&conn, id).ok_or_else(not_found)?;
@@ -114,7 +165,9 @@ async fn app_install_link(State(state): State<Arc<AppState>>, headers: HeaderMap
         return Err(forbidden());
     }
     let code = store::create_install(&conn, id);
-    Ok(Json(json!({ "code": code, "url": format!("runecord://install/{code}") })))
+    Ok(Json(
+        json!({ "code": code, "url": format!("runecord://install/{code}") }),
+    ))
 }
 
 #[derive(Deserialize)]
@@ -134,7 +187,10 @@ async fn install_app(
 ) -> Result<Json<Application>, ApiError> {
     let me = crate::api::auth_human(&state, &headers)?;
     let conn = state.store.conn();
-    if !has(store::base_permissions(&conn, body.guild_id, me), perm::MANAGE_GUILD) {
+    if !has(
+        store::base_permissions(&conn, body.guild_id, me),
+        perm::MANAGE_GUILD,
+    ) {
         return Err(forbidden());
     }
     for scope in &body.scopes {
@@ -150,17 +206,36 @@ async fn install_app(
     if body.permissions != 0 {
         let role_id = store::next_id(&conn);
         conn.execute("INSERT INTO roles(id, guild_id, name, color, permissions, position, hoist, mentionable) VALUES(?1,?2,?3,?4,?5,1,0,0)", rusqlite::params![role_id, body.guild_id, format!("{} bot", app.name), app.icon_color as i64, body.permissions as i64]).ok();
-        conn.execute("INSERT OR IGNORE INTO member_roles(guild_id, user_id, role_id) VALUES(?1,?2,?3)", rusqlite::params![body.guild_id, app.bot.id, role_id]).ok();
+        conn.execute(
+            "INSERT OR IGNORE INTO member_roles(guild_id, user_id, role_id) VALUES(?1,?2,?3)",
+            rusqlite::params![body.guild_id, app.bot.id, role_id],
+        )
+        .ok();
     }
-    let scopes = if body.scopes.is_empty() { "bot applications.commands".to_string() } else { body.scopes.join(" ") };
-    conn.execute("UPDATE applications SET scopes=?1, permissions=?2 WHERE id=?3", rusqlite::params![scopes, body.permissions as i64, app.id]).ok();
+    let scopes = if body.scopes.is_empty() {
+        "bot applications.commands".to_string()
+    } else {
+        body.scopes.join(" ")
+    };
+    conn.execute(
+        "UPDATE applications SET scopes=?1, permissions=?2 WHERE id=?3",
+        rusqlite::params![scopes, body.permissions as i64, app.id],
+    )
+    .ok();
     let app = store::application_by_id(&conn, app.id).unwrap_or(app);
     drop(conn);
-    let _ = state.tx.send(GatewayEvent::GuildMembers { guild_id: body.guild_id, members: Vec::new() });
+    let _ = state.tx.send(GatewayEvent::GuildMembers {
+        guild_id: body.guild_id,
+        members: Vec::new(),
+    });
     Ok(Json(app))
 }
 
-async fn app_token(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<Id>) -> Result<Json<Value>, ApiError> {
+async fn app_token(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<Id>,
+) -> Result<Json<Value>, ApiError> {
     let me = crate::api::auth_human(&state, &headers)?;
     let conn = state.store.conn();
     let app = store::application_by_id(&conn, id).ok_or_else(not_found)?;
@@ -184,7 +259,11 @@ struct NewCommand {
     options: Value,
 }
 
-async fn list_commands(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(app): Path<Id>) -> Result<Json<Vec<ApplicationCommand>>, ApiError> {
+async fn list_commands(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(app): Path<Id>,
+) -> Result<Json<Vec<ApplicationCommand>>, ApiError> {
     let me = crate::api::auth_human(&state, &headers)?;
     let conn = state.store.conn();
     let found = store::application_by_id(&conn, app).ok_or_else(not_found)?;
@@ -207,11 +286,27 @@ async fn create_command(
         return Err(forbidden());
     }
     let name = body.name.trim().to_lowercase();
-    if name.is_empty() || !name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_') {
-        return Err(bad("Command names are lowercase letters, numbers, - and _."));
+    if name.is_empty()
+        || !name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+    {
+        return Err(bad(
+            "Command names are lowercase letters, numbers, - and _.",
+        ));
     }
-    let options = if body.options.is_null() { json!([]) } else { body.options };
-    Ok(Json(store::create_command(&conn, app, &name, body.description.trim(), &options)))
+    let options = if body.options.is_null() {
+        json!([])
+    } else {
+        body.options
+    };
+    Ok(Json(store::create_command(
+        &conn,
+        app,
+        &name,
+        body.description.trim(),
+        &options,
+    )))
 }
 
 async fn delete_command(
@@ -244,11 +339,15 @@ async fn invoke_interaction(
     let me = crate::api::auth_user(&state, &headers)?;
     let conn = state.store.conn();
     let channel = store::channel_by_id(&conn, body.channel_id).ok_or_else(not_found)?;
-    let guild = channel.guild_id.ok_or_else(|| bad("Commands run in guild channels."))?;
+    let guild = channel
+        .guild_id
+        .ok_or_else(|| bad("Commands run in guild channels."))?;
     if !store::can_view(&conn, body.channel_id, me) {
         return Err(forbidden());
     }
-    let (app, command) = store::command_in_guild(&conn, body.command.trim_start_matches('/'), guild).ok_or_else(not_found)?;
+    let (app, command) =
+        store::command_in_guild(&conn, body.command.trim_start_matches('/'), guild)
+            .ok_or_else(not_found)?;
     if !app.scopes.iter().any(|s| s == "applications.commands") {
         return Err(forbidden());
     }
@@ -272,19 +371,28 @@ async fn invoke_interaction(
             "options": body.options
         }
     });
-    state.interactions.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(
-        interaction_id.to_string(),
-        PendingInteraction {
-            app_id: app.id,
-            bot_id: app.bot.id,
-            channel_id: body.channel_id,
-            user_id: me,
-            token: token.clone(),
-            created_at: now_ms(),
-        },
-    );
-    let _ = state.tx.send(GatewayEvent::InteractionCreate { app_id: app.id, payload });
-    Ok(Json(json!({ "id": interaction_id.to_string(), "token": token })))
+    state
+        .interactions
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .insert(
+            interaction_id.to_string(),
+            PendingInteraction {
+                app_id: app.id,
+                bot_id: app.bot.id,
+                channel_id: body.channel_id,
+                user_id: me,
+                token: token.clone(),
+                created_at: now_ms(),
+            },
+        );
+    let _ = state.tx.send(GatewayEvent::InteractionCreate {
+        app_id: app.id,
+        payload,
+    });
+    Ok(Json(
+        json!({ "id": interaction_id.to_string(), "token": token }),
+    ))
 }
 
 #[derive(Deserialize)]
@@ -301,8 +409,13 @@ async fn interaction_callback(
     Json(body): Json<Callback>,
 ) -> Result<Json<Value>, ApiError> {
     let pending = {
-        let mut map = state.interactions.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let Some(item) = map.get(&id).cloned() else { return Err(not_found()) };
+        let mut map = state
+            .interactions
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(item) = map.get(&id).cloned() else {
+            return Err(not_found());
+        };
         if item.token != token {
             return Err(forbidden());
         }
@@ -313,9 +426,17 @@ async fn interaction_callback(
         return Ok(Json(json!({ "ok": true, "deferred": true })));
     }
     if body.kind != 4 {
-        return Err(bad("Only CHANNEL_MESSAGE_WITH_SOURCE (4) and DEFERRED (5) are supported."));
+        return Err(bad(
+            "Only CHANNEL_MESSAGE_WITH_SOURCE (4) and DEFERRED (5) are supported.",
+        ));
     }
-    let content = body.data.get("content").and_then(|c| c.as_str()).unwrap_or("").trim_end().to_string();
+    let content = body
+        .data
+        .get("content")
+        .and_then(|c| c.as_str())
+        .unwrap_or("")
+        .trim_end()
+        .to_string();
     if content.is_empty() {
         return Err(bad("Interaction response needs content."));
     }
@@ -325,7 +446,11 @@ async fn interaction_callback(
         "INSERT INTO messages(id, channel_id, author_id, content, timestamp) VALUES(?1,?2,?3,?4,?5)",
         rusqlite::params![mid, pending.channel_id, pending.bot_id, content, now_ms()],
     ).map_err(internal)?;
-    conn.execute("UPDATE channels SET last_message_id=?1 WHERE id=?2", rusqlite::params![mid, pending.channel_id]).ok();
+    conn.execute(
+        "UPDATE channels SET last_message_id=?1 WHERE id=?2",
+        rusqlite::params![mid, pending.channel_id],
+    )
+    .ok();
     let msg = store::message_by_id(&conn, mid, pending.bot_id).ok_or_else(not_found)?;
     drop(conn);
     let _ = state.tx.send(GatewayEvent::MessageCreate(Box::new(msg)));
@@ -352,8 +477,13 @@ async fn create_webhook(
     let me = crate::api::auth_user(&state, &headers)?;
     let conn = state.store.conn();
     let ch = store::channel_by_id(&conn, channel).ok_or_else(not_found)?;
-    let guild = ch.guild_id.ok_or_else(|| bad("Webhooks need a guild channel."))?;
-    if !has(store::base_permissions(&conn, guild, me), perm::MANAGE_WEBHOOKS) {
+    let guild = ch
+        .guild_id
+        .ok_or_else(|| bad("Webhooks need a guild channel."))?;
+    if !has(
+        store::base_permissions(&conn, guild, me),
+        perm::MANAGE_WEBHOOKS,
+    ) {
         return Err(forbidden());
     }
     let name = body.name.trim();
@@ -361,28 +491,57 @@ async fn create_webhook(
         return Err(bad("Webhook name is required."));
     }
     let (info, _token) = store::create_webhook(&conn, guild, channel, me, name, body.color);
-    store::record_audit(&conn, guild, me, 50, Some(info.id), json!([{ "key": "name", "new_value": name }]));
+    store::record_audit(
+        &conn,
+        guild,
+        me,
+        50,
+        Some(info.id),
+        json!([{ "key": "name", "new_value": name }]),
+    );
     Ok(Json(info))
 }
 
-async fn list_webhooks(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(channel): Path<Id>) -> Result<Json<Vec<WebhookInfo>>, ApiError> {
+async fn list_webhooks(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(channel): Path<Id>,
+) -> Result<Json<Vec<WebhookInfo>>, ApiError> {
     let me = crate::api::auth_user(&state, &headers)?;
     let conn = state.store.conn();
     let ch = store::channel_by_id(&conn, channel).ok_or_else(not_found)?;
     if let Some(guild) = ch.guild_id {
-        if !has(store::base_permissions(&conn, guild, me), perm::MANAGE_WEBHOOKS) {
+        if !has(
+            store::base_permissions(&conn, guild, me),
+            perm::MANAGE_WEBHOOKS,
+        ) {
             return Err(forbidden());
         }
     }
     Ok(Json(store::webhooks_for_channel(&conn, channel)))
 }
 
-async fn delete_webhook(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<Id>) -> Result<Json<Value>, ApiError> {
+async fn delete_webhook(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<Id>,
+) -> Result<Json<Value>, ApiError> {
     let me = crate::api::auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    let guild: Option<Id> = conn.query_row("SELECT guild_id FROM webhooks WHERE id=?1", rusqlite::params![id], |r| r.get(0)).ok();
-    let Some(guild) = guild else { return Err(not_found()) };
-    if !has(store::base_permissions(&conn, guild, me), perm::MANAGE_WEBHOOKS) {
+    let guild: Option<Id> = conn
+        .query_row(
+            "SELECT guild_id FROM webhooks WHERE id=?1",
+            rusqlite::params![id],
+            |r| r.get(0),
+        )
+        .ok();
+    let Some(guild) = guild else {
+        return Err(not_found());
+    };
+    if !has(
+        store::base_permissions(&conn, guild, me),
+        perm::MANAGE_WEBHOOKS,
+    ) {
         return Err(forbidden());
     }
     store::delete_webhook(&conn, guild, id);
@@ -418,7 +577,10 @@ async fn execute_webhook(
     if content.is_empty() {
         return Err(bad("Webhook message needs content."));
     }
-    let name = body.username.filter(|n| !n.trim().is_empty()).unwrap_or(hook.name.clone());
+    let name = body
+        .username
+        .filter(|n| !n.trim().is_empty())
+        .unwrap_or(hook.name.clone());
     let color = body.avatar_color.unwrap_or(hook.avatar_color);
     let mid = store::next_id(&conn);
     conn.execute(
@@ -426,10 +588,16 @@ async fn execute_webhook(
          VALUES(?1,?2,0,?3,?4,?5,?6,?7)",
         rusqlite::params![mid, hook.channel_id, content, now_ms(), hook.id, name, color as i64],
     ).map_err(internal)?;
-    conn.execute("UPDATE channels SET last_message_id=?1 WHERE id=?2", rusqlite::params![mid, hook.channel_id]).ok();
+    conn.execute(
+        "UPDATE channels SET last_message_id=?1 WHERE id=?2",
+        rusqlite::params![mid, hook.channel_id],
+    )
+    .ok();
     let msg = store::message_by_id(&conn, mid, 0).ok_or_else(not_found)?;
     drop(conn);
-    let _ = state.tx.send(GatewayEvent::MessageCreate(Box::new(msg.clone())));
+    let _ = state
+        .tx
+        .send(GatewayEvent::MessageCreate(Box::new(msg.clone())));
     if q.wait {
         Ok(Json(msg).into_response())
     } else {
@@ -457,10 +625,18 @@ async fn audit_logs(
 ) -> Result<Json<Vec<AuditEntry>>, ApiError> {
     let me = crate::api::auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    if !has(store::base_permissions(&conn, guild, me), perm::VIEW_AUDIT_LOG) {
+    if !has(
+        store::base_permissions(&conn, guild, me),
+        perm::VIEW_AUDIT_LOG,
+    ) {
         return Err(forbidden());
     }
-    Ok(Json(store::audit_entries(&conn, guild, q.limit.unwrap_or(50), q.before)))
+    Ok(Json(store::audit_entries(
+        &conn,
+        guild,
+        q.limit.unwrap_or(50),
+        q.before,
+    )))
 }
 
 #[derive(Deserialize)]
@@ -470,10 +646,17 @@ struct EmojiQuery {
     sticker: bool,
 }
 
-async fn list_emojis(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(guild): Path<Id>) -> Result<Json<Vec<Emoji>>, ApiError> {
+async fn list_emojis(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild): Path<Id>,
+) -> Result<Json<Vec<Emoji>>, ApiError> {
     let me = crate::api::auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    if !has(store::base_permissions(&conn, guild, me), perm::VIEW_CHANNEL) {
+    if !has(
+        store::base_permissions(&conn, guild, me),
+        perm::VIEW_CHANNEL,
+    ) {
         return Err(forbidden());
     }
     Ok(Json(store::guild_emojis(&conn, guild)))
@@ -487,7 +670,10 @@ async fn create_emoji(
     bytes: Bytes,
 ) -> Result<Json<Emoji>, ApiError> {
     let me = crate::api::auth_user(&state, &headers)?;
-    if !has(store::base_permissions(&state.store.conn(), guild, me), perm::MANAGE_GUILD) {
+    if !has(
+        store::base_permissions(&state.store.conn(), guild, me),
+        perm::MANAGE_GUILD,
+    ) {
         return Err(forbidden());
     }
     if bytes.len() > 2 * 1024 * 1024 {
@@ -501,9 +687,19 @@ async fn create_emoji(
     let url = save_cdn(&state, &bytes, &format!("{name}.{ext}"), "image/png")?;
     let conn = state.store.conn();
     let emoji = store::create_emoji(&conn, guild, me, &name, q.sticker, &url);
-    store::record_audit(&conn, guild, me, 60, Some(emoji.id), json!([{ "key": "name", "new_value": name }]));
+    store::record_audit(
+        &conn,
+        guild,
+        me,
+        60,
+        Some(emoji.id),
+        json!([{ "key": "name", "new_value": name }]),
+    );
     drop(conn);
-    let _ = state.tx.send(GatewayEvent::GuildMembers { guild_id: guild, members: Vec::new() });
+    let _ = state.tx.send(GatewayEvent::GuildMembers {
+        guild_id: guild,
+        members: Vec::new(),
+    });
     Ok(Json(emoji))
 }
 
@@ -514,7 +710,10 @@ async fn delete_emoji(
 ) -> Result<Json<Value>, ApiError> {
     let me = crate::api::auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    if !has(store::base_permissions(&conn, guild, me), perm::MANAGE_GUILD) {
+    if !has(
+        store::base_permissions(&conn, guild, me),
+        perm::MANAGE_GUILD,
+    ) {
         return Err(forbidden());
     }
     if !store::delete_emoji(&conn, guild, emoji) {
@@ -544,7 +743,10 @@ pub fn set_voice(
     deaf: bool,
 ) -> Result<VoiceState, ApiError> {
     let conn = state.store.conn();
-    if !has(store::base_permissions(&conn, guild, user), perm::VIEW_CHANNEL) {
+    if !has(
+        store::base_permissions(&conn, guild, user),
+        perm::VIEW_CHANNEL,
+    ) {
         return Err(forbidden());
     }
     if let Some(ch) = channel {
@@ -554,15 +756,26 @@ pub fn set_voice(
         }
     }
     drop(conn);
-    let vs = VoiceState { user_id: user, guild_id: guild, channel_id: channel, self_mute: mute, self_deaf: deaf };
-    let mut map = state.voice.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let vs = VoiceState {
+        user_id: user,
+        guild_id: guild,
+        channel_id: channel,
+        self_mute: mute,
+        self_deaf: deaf,
+    };
+    let mut map = state
+        .voice
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if channel.is_some() {
         map.insert(user, vs.clone());
     } else {
         map.remove(&user);
     }
     drop(map);
-    let _ = state.tx.send(GatewayEvent::VoiceStateUpdate(Box::new(vs.clone())));
+    let _ = state
+        .tx
+        .send(GatewayEvent::VoiceStateUpdate(Box::new(vs.clone())));
     Ok(vs)
 }
 
@@ -572,5 +785,13 @@ async fn voice_state(
     Json(body): Json<VoiceBody>,
 ) -> Result<Json<VoiceState>, ApiError> {
     let me = crate::api::auth_user(&state, &headers)?;
-    set_voice(&state, me, body.guild_id, body.channel_id, body.self_mute, body.self_deaf).map(Json)
+    set_voice(
+        &state,
+        me,
+        body.guild_id,
+        body.channel_id,
+        body.self_mute,
+        body.self_deaf,
+    )
+    .map(Json)
 }

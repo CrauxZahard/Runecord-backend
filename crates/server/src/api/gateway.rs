@@ -1,13 +1,17 @@
 //! gateway.
 
 use super::*;
-use crate::{store, AppState};
+use crate::{AppState, store};
 use axum::extract::State;
 use axum::http::HeaderMap;
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 use std::sync::Arc;
 
-pub(crate) async fn gateway(State(state): State<Arc<AppState>>, headers: HeaderMap, ws: WebSocketUpgrade) -> Result<Response, ApiError> {
+pub(crate) async fn gateway(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    ws: WebSocketUpgrade,
+) -> Result<Response, ApiError> {
     let me = auth_user(&state, &headers)?;
     Ok(ws.on_upgrade(move |socket| gateway_loop(socket, state, me)))
 }
@@ -39,17 +43,29 @@ pub(crate) fn related_user(conn: &rusqlite::Connection, a: Id, b: Id) -> bool {
 pub(crate) fn gateway_event_visible(state: &AppState, me: Id, event: &GatewayEvent) -> bool {
     let conn = state.store.conn();
     match event {
-        GatewayEvent::Ready(_) | GatewayEvent::ReadyCheck | GatewayEvent::InteractionCreate { .. } => false,
-        GatewayEvent::MessageCreate(m) | GatewayEvent::MessageUpdate(m) | GatewayEvent::ReactionUpdate(m) => {
-            store::can_view(&conn, m.channel_id, me)
-        }
+        GatewayEvent::Ready(_)
+        | GatewayEvent::ReadyCheck
+        | GatewayEvent::InteractionCreate { .. } => false,
+        GatewayEvent::MessageCreate(m)
+        | GatewayEvent::MessageUpdate(m)
+        | GatewayEvent::ReactionUpdate(m) => store::can_view(&conn, m.channel_id, me),
         GatewayEvent::MessageDelete { channel_id, .. } => store::can_view(&conn, *channel_id, me),
         GatewayEvent::TypingStart { channel_id, .. } => store::can_view(&conn, *channel_id, me),
         GatewayEvent::PresenceUpdate { user_id, .. } => related_user(&conn, me, *user_id),
-        GatewayEvent::ChannelCreate(c) | GatewayEvent::ChannelUpdate(c) => store::can_view(&conn, c.id, me),
-        GatewayEvent::ChannelDelete { guild_id: Some(guild_id), .. } => store::guild_member(&conn, *guild_id, me),
-        GatewayEvent::ChannelDelete { channel_id, guild_id: None } => store::is_dm_member(&conn, *channel_id, me),
-        GatewayEvent::GuildCreate(g) | GatewayEvent::GuildUpdate(g) => store::guild_member(&conn, g.id, me),
+        GatewayEvent::ChannelCreate(c) | GatewayEvent::ChannelUpdate(c) => {
+            store::can_view(&conn, c.id, me)
+        }
+        GatewayEvent::ChannelDelete {
+            guild_id: Some(guild_id),
+            ..
+        } => store::guild_member(&conn, *guild_id, me),
+        GatewayEvent::ChannelDelete {
+            channel_id,
+            guild_id: None,
+        } => store::is_dm_member(&conn, *channel_id, me),
+        GatewayEvent::GuildCreate(g) | GatewayEvent::GuildUpdate(g) => {
+            store::guild_member(&conn, g.id, me)
+        }
         GatewayEvent::GuildDelete { .. } => true,
         GatewayEvent::MemberUpdate(m) => store::guild_member(&conn, m.guild_id, me),
         GatewayEvent::MemberRemove { guild_id, .. }
@@ -75,8 +91,15 @@ pub(crate) async fn gateway_loop(socket: WebSocket, state: Arc<AppState>, me: Id
     };
     if first {
         let conn = state.store.conn();
-        conn.execute("UPDATE users SET status='online' WHERE id=?1 AND status='offline'", params![me]).ok();
-        let _ = state.tx.send(GatewayEvent::PresenceUpdate { user_id: me, status: Presence::Online });
+        conn.execute(
+            "UPDATE users SET status='online' WHERE id=?1 AND status='offline'",
+            params![me],
+        )
+        .ok();
+        let _ = state.tx.send(GatewayEvent::PresenceUpdate {
+            user_id: me,
+            status: Presence::Online,
+        });
     }
 
     let bootstrap = {
@@ -141,8 +164,12 @@ pub(crate) async fn gateway_loop(socket: WebSocket, state: Arc<AppState>, me: Id
             if *count == 0 {
                 online.remove(&me);
                 let conn = state.store.conn();
-                conn.execute("UPDATE users SET status='offline' WHERE id=?1", params![me]).ok();
-                let _ = state.tx.send(GatewayEvent::PresenceUpdate { user_id: me, status: Presence::Offline });
+                conn.execute("UPDATE users SET status='offline' WHERE id=?1", params![me])
+                    .ok();
+                let _ = state.tx.send(GatewayEvent::PresenceUpdate {
+                    user_id: me,
+                    status: Presence::Offline,
+                });
             }
         }
     }
@@ -151,5 +178,3 @@ pub(crate) async fn gateway_loop(socket: WebSocket, state: Arc<AppState>, me: Id
 // ---------------------------------------------------------------------------
 // Misc
 // ---------------------------------------------------------------------------
-
-

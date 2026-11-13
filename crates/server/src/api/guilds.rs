@@ -1,15 +1,19 @@
 //! guilds.
 
 use super::*;
-use crate::{store, AppState};
+use crate::{AppState, store};
+use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
-use axum::Json;
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 use serde_json::json;
 use std::sync::Arc;
 
-pub(crate) async fn guild_info(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(guild): Path<Id>) -> Result<Json<GuildDetail>, ApiError> {
+pub(crate) async fn guild_info(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild): Path<Id>,
+) -> Result<Json<GuildDetail>, ApiError> {
     let me = auth_user(&state, &headers)?;
     // `total_changes` is a monotonic write counter: folding it into the key means
     // any channel, role or overwrite edit invalidates the entry without a
@@ -44,8 +48,11 @@ pub(crate) async fn guild_info(State(state): State<Arc<AppState>>, headers: Head
     Ok(Json(detail))
 }
 
-
-pub(crate) async fn create_guild(State(state): State<Arc<AppState>>, headers: HeaderMap, Json(body): Json<CreateGuild>) -> Result<Json<Guild>, ApiError> {
+pub(crate) async fn create_guild(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(body): Json<CreateGuild>,
+) -> Result<Json<Guild>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let name = body.name.trim();
     if name.is_empty() || name.chars().count() > 100 {
@@ -93,7 +100,14 @@ pub(crate) async fn create_guild(State(state): State<Arc<AppState>>, headers: He
         member_count: 1,
         created_at: now_ms(),
         channels: vec![
-            Channel { id: cat, guild_id: Some(gid), name: "Text Channels".into(), kind: ChannelKind::Category, position: 0, ..Channel::default() },
+            Channel {
+                id: cat,
+                guild_id: Some(gid),
+                name: "Text Channels".into(),
+                kind: ChannelKind::Category,
+                position: 0,
+                ..Channel::default()
+            },
             Channel {
                 id: general,
                 guild_id: Some(gid),
@@ -107,70 +121,136 @@ pub(crate) async fn create_guild(State(state): State<Arc<AppState>>, headers: He
         ],
         ..Guild::default()
     };
-    let _ = state.tx.send(GatewayEvent::GuildCreate(Box::new(guild.clone())));
+    let _ = state
+        .tx
+        .send(GatewayEvent::GuildCreate(Box::new(guild.clone())));
     Ok(Json(guild))
 }
 
-pub(crate) async fn update_guild(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<Id>, Json(body): Json<UpdateGuild>) -> Result<Json<Guild>, ApiError> {
+pub(crate) async fn update_guild(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<Id>,
+    Json(body): Json<UpdateGuild>,
+) -> Result<Json<Guild>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    let owner: Option<Id> = conn.query_row("SELECT owner_id FROM guilds WHERE id=?1", params![id], |r| r.get(0)).optional().map_err(internal)?;
+    let owner: Option<Id> = conn
+        .query_row(
+            "SELECT owner_id FROM guilds WHERE id=?1",
+            params![id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(internal)?;
     if owner != Some(me) {
         return Err(forbidden());
     }
     if let Some(name) = body.name {
-        conn.execute("UPDATE guilds SET name=?1 WHERE id=?2", params![name.trim(), id]).map_err(internal)?;
+        conn.execute(
+            "UPDATE guilds SET name=?1 WHERE id=?2",
+            params![name.trim(), id],
+        )
+        .map_err(internal)?;
     }
     if let Some(color) = body.icon_color {
-        conn.execute("UPDATE guilds SET icon_color=?1 WHERE id=?2", params![color as i64, id]).map_err(internal)?;
+        conn.execute(
+            "UPDATE guilds SET icon_color=?1 WHERE id=?2",
+            params![color as i64, id],
+        )
+        .map_err(internal)?;
     }
     if let Some(tag) = body.tag {
-        conn.execute("UPDATE guilds SET tag=?1 WHERE id=?2", params![tag.chars().take(8).collect::<String>(), id]).map_err(internal)?;
+        conn.execute(
+            "UPDATE guilds SET tag=?1 WHERE id=?2",
+            params![tag.chars().take(8).collect::<String>(), id],
+        )
+        .map_err(internal)?;
     }
     if let Some(desc) = body.description {
-        conn.execute("UPDATE guilds SET description=?1 WHERE id=?2", params![desc, id]).map_err(internal)?;
+        conn.execute(
+            "UPDATE guilds SET description=?1 WHERE id=?2",
+            params![desc, id],
+        )
+        .map_err(internal)?;
     }
-    let guild = Guild { id, ..Guild::default() };
-    let _ = state.tx.send(GatewayEvent::GuildUpdate(Box::new(guild.clone())));
+    let guild = Guild {
+        id,
+        ..Guild::default()
+    };
+    let _ = state
+        .tx
+        .send(GatewayEvent::GuildUpdate(Box::new(guild.clone())));
     Ok(Json(guild))
 }
 
-pub(crate) async fn delete_guild(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<Id>) -> Result<Json<serde_json::Value>, ApiError> {
+pub(crate) async fn delete_guild(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<Id>,
+) -> Result<Json<serde_json::Value>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    let owner: Option<Id> = conn.query_row("SELECT owner_id FROM guilds WHERE id=?1", params![id], |r| r.get(0)).optional().map_err(internal)?;
+    let owner: Option<Id> = conn
+        .query_row(
+            "SELECT owner_id FROM guilds WHERE id=?1",
+            params![id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(internal)?;
     if owner != Some(me) {
         return Err(forbidden());
     }
-    conn.execute("DELETE FROM channels WHERE guild_id=?1", params![id]).ok();
-    conn.execute("DELETE FROM guild_members WHERE guild_id=?1", params![id]).ok();
-    conn.execute("DELETE FROM roles WHERE guild_id=?1", params![id]).ok();
-    conn.execute("DELETE FROM guilds WHERE id=?1", params![id]).ok();
+    conn.execute("DELETE FROM channels WHERE guild_id=?1", params![id])
+        .ok();
+    conn.execute("DELETE FROM guild_members WHERE guild_id=?1", params![id])
+        .ok();
+    conn.execute("DELETE FROM roles WHERE guild_id=?1", params![id])
+        .ok();
+    conn.execute("DELETE FROM guilds WHERE id=?1", params![id])
+        .ok();
     let _ = state.tx.send(GatewayEvent::GuildDelete { guild_id: id });
     Ok(Json(json!({ "ok": true })))
 }
 
-
-pub(crate) async fn list_roles(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(guild): Path<Id>) -> Result<Json<Vec<Role>>, ApiError> {
+pub(crate) async fn list_roles(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild): Path<Id>,
+) -> Result<Json<Vec<Role>>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    if !has(store::base_permissions(&conn, guild, me), perm::VIEW_CHANNEL) {
+    if !has(
+        store::base_permissions(&conn, guild, me),
+        perm::VIEW_CHANNEL,
+    ) {
         return Err(forbidden());
     }
     Ok(Json(store::guild_roles(&conn, guild)))
 }
 
-pub(crate) async fn my_permissions(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(guild): Path<Id>) -> Result<Json<serde_json::Value>, ApiError> {
+pub(crate) async fn my_permissions(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild): Path<Id>,
+) -> Result<Json<serde_json::Value>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    if !has(store::base_permissions(&conn, guild, me), perm::VIEW_CHANNEL) {
+    if !has(
+        store::base_permissions(&conn, guild, me),
+        perm::VIEW_CHANNEL,
+    ) {
         return Err(forbidden());
     }
     let mut channels = serde_json::Map::new();
     for channel in store::list_children(&conn, guild) {
-        channels.insert(channel.id.to_string(), json!(store::channel_permissions(&conn, channel.id, me)));
+        channels.insert(
+            channel.id.to_string(),
+            json!(store::channel_permissions(&conn, channel.id, me)),
+        );
     }
-    Ok(Json(json!({ "permissions": store::base_permissions(&conn, guild, me), "channels": channels })))
+    Ok(Json(
+        json!({ "permissions": store::base_permissions(&conn, guild, me), "channels": channels }),
+    ))
 }
-
-

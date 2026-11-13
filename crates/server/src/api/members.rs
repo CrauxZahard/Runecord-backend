@@ -1,10 +1,10 @@
 //! members.
 
 use super::*;
-use crate::{store, AppState};
+use crate::{AppState, store};
+use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
-use axum::Json;
 use rusqlite::params;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -34,7 +34,10 @@ pub(crate) async fn list_guild_members(
     if !store::guild_member(&conn, guild, me) {
         return Err(not_found());
     }
-    if !has(store::base_permissions(&conn, guild, me), perm::VIEW_CHANNEL) {
+    if !has(
+        store::base_permissions(&conn, guild, me),
+        perm::VIEW_CHANNEL,
+    ) {
         return Err(forbidden());
     }
     let page = store::members_page(
@@ -61,15 +64,22 @@ pub(crate) async fn get_guild_member(
     if !store::guild_member(&conn, guild, me) {
         return Err(not_found());
     }
-    if !has(store::base_permissions(&conn, guild, me), perm::VIEW_CHANNEL) {
+    if !has(
+        store::base_permissions(&conn, guild, me),
+        perm::VIEW_CHANNEL,
+    ) {
         return Err(forbidden());
     }
     let member = store::guild_member_detail(&conn, guild, user).ok_or_else(not_found)?;
     Ok(Json(member))
 }
 
-
-pub(crate) async fn update_member(State(state): State<Arc<AppState>>, headers: HeaderMap, Path((guild, user)): Path<(Id, Id)>, Json(body): Json<MemberUpdate>) -> Result<Json<Member>, ApiError> {
+pub(crate) async fn update_member(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path((guild, user)): Path<(Id, Id)>,
+    Json(body): Json<MemberUpdate>,
+) -> Result<Json<Member>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
     if me != user {
@@ -82,13 +92,21 @@ pub(crate) async fn update_member(State(state): State<Arc<AppState>>, headers: H
         }
     }
     if let Some(nick) = body.nickname {
-        conn.execute("UPDATE guild_members SET nickname=?1 WHERE guild_id=?2 AND user_id=?3", params![nick, guild, user]).ok();
+        conn.execute(
+            "UPDATE guild_members SET nickname=?1 WHERE guild_id=?2 AND user_id=?3",
+            params![nick, guild, user],
+        )
+        .ok();
     }
     if let Some(roles) = body.role_ids {
         let actor = store::base_permissions(&conn, guild, me);
         let admin = actor & perm::ADMINISTRATOR != 0;
         let top = store::member_top_role(&conn, guild, me);
-        conn.execute("DELETE FROM member_roles WHERE guild_id=?1 AND user_id=?2", params![guild, user]).ok();
+        conn.execute(
+            "DELETE FROM member_roles WHERE guild_id=?1 AND user_id=?2",
+            params![guild, user],
+        )
+        .ok();
         for rid in roles {
             if !admin {
                 if let Some(pos) = store::role_position(&conn, guild, rid) {
@@ -97,24 +115,34 @@ pub(crate) async fn update_member(State(state): State<Arc<AppState>>, headers: H
                     }
                 }
             }
-            conn.execute("INSERT OR IGNORE INTO member_roles(guild_id, user_id, role_id) VALUES(?1,?2,?3)", params![guild, user, rid]).ok();
+            conn.execute(
+                "INSERT OR IGNORE INTO member_roles(guild_id, user_id, role_id) VALUES(?1,?2,?3)",
+                params![guild, user, rid],
+            )
+            .ok();
         }
     }
     let u = store::user_by_id(&conn, user).ok_or_else(not_found)?;
     let member = Member {
         guild_id: guild,
         user: u,
-        nickname: conn.query_row("SELECT nickname FROM guild_members WHERE guild_id=?1 AND user_id=?2", params![guild, user], |r| r.get::<_, String>(0)).unwrap_or_default(),
+        nickname: conn
+            .query_row(
+                "SELECT nickname FROM guild_members WHERE guild_id=?1 AND user_id=?2",
+                params![guild, user],
+                |r| r.get::<_, String>(0),
+            )
+            .unwrap_or_default(),
         roles: store::member_role_ids(&conn, guild, user),
         joined_at: now_ms(),
     };
     drop(conn);
-    let _ = state.tx.send(GatewayEvent::MemberUpdate(Box::new(member.clone())));
+    let _ = state
+        .tx
+        .send(GatewayEvent::MemberUpdate(Box::new(member.clone())));
     Ok(Json(member))
 }
 
 // ---------------------------------------------------------------------------
 // Invites
 // ---------------------------------------------------------------------------
-
-

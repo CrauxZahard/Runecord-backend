@@ -1,7 +1,7 @@
 //! model.
 
 use super::*;
-use rusqlite::{params, Connection, OptionalExtension, Row};
+use rusqlite::{Connection, OptionalExtension, Row, params};
 
 pub fn presence_from(s: &str) -> Presence {
     match s {
@@ -38,11 +38,25 @@ pub fn user_from_row(r: &Row<'_>) -> rusqlite::Result<User> {
 }
 
 pub fn user_by_id(conn: &Connection, id: Id) -> Option<User> {
-    conn.query_row("SELECT * FROM users WHERE id=?1", params![id], user_from_row).optional().ok().flatten()
+    conn.query_row(
+        "SELECT * FROM users WHERE id=?1",
+        params![id],
+        user_from_row,
+    )
+    .optional()
+    .ok()
+    .flatten()
 }
 
 pub fn user_by_name(conn: &Connection, name: &str) -> Option<User> {
-    conn.query_row("SELECT * FROM users WHERE username=?1", params![name], user_from_row).optional().ok().flatten()
+    conn.query_row(
+        "SELECT * FROM users WHERE username=?1",
+        params![name],
+        user_from_row,
+    )
+    .optional()
+    .ok()
+    .flatten()
 }
 
 pub fn channel_from_row(r: &Row<'_>) -> rusqlite::Result<Channel> {
@@ -88,7 +102,14 @@ pub fn channel_from_row(r: &Row<'_>) -> rusqlite::Result<Channel> {
 }
 
 pub fn channel_by_id(conn: &Connection, id: Id) -> Option<Channel> {
-    conn.query_row("SELECT * FROM channels WHERE id=?1", params![id], channel_from_row).optional().ok().flatten()
+    conn.query_row(
+        "SELECT * FROM channels WHERE id=?1",
+        params![id],
+        channel_from_row,
+    )
+    .optional()
+    .ok()
+    .flatten()
 }
 
 pub fn role_from_row(r: &Row<'_>) -> rusqlite::Result<Role> {
@@ -103,7 +124,6 @@ pub fn role_from_row(r: &Row<'_>) -> rusqlite::Result<Role> {
         mentionable: r.get::<_, i64>("mentionable")? != 0,
     })
 }
-
 
 pub fn attachments(conn: &Connection, message_id: Id) -> Vec<Attachment> {
     let mut stmt = match conn.prepare("SELECT * FROM attachments WHERE message_id=?1 ORDER BY id") {
@@ -126,19 +146,28 @@ pub fn attachments(conn: &Connection, message_id: Id) -> Vec<Attachment> {
 }
 
 pub fn reactions(conn: &Connection, message_id: Id, me: Id) -> Vec<Reaction> {
-    let mut stmt = match conn.prepare("SELECT emoji, user_id FROM reactions WHERE message_id=?1 ORDER BY emoji, user_id") {
+    let mut stmt = match conn
+        .prepare("SELECT emoji, user_id FROM reactions WHERE message_id=?1 ORDER BY emoji, user_id")
+    {
         Ok(s) => s,
         Err(_) => return Vec::new(),
     };
     let mut grouped: Vec<Reaction> = Vec::new();
-    if let Ok(rows) = stmt.query_map(params![message_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, Id>(1)?))) {
+    if let Ok(rows) = stmt.query_map(params![message_id], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, Id>(1)?))
+    }) {
         for (emoji, user_id) in rows.flatten() {
             if let Some(last) = grouped.last_mut().filter(|x| x.emoji == emoji) {
                 last.count += 1;
                 last.user_ids.push(user_id);
                 last.me |= user_id == me;
             } else {
-                grouped.push(Reaction { emoji, count: 1, me: user_id == me, user_ids: vec![user_id] });
+                grouped.push(Reaction {
+                    emoji,
+                    count: 1,
+                    me: user_id == me,
+                    user_ids: vec![user_id],
+                });
             }
         }
     }
@@ -212,5 +241,3 @@ pub fn message_by_id(conn: &Connection, id: Id, me: Id) -> Option<Message> {
 // ---------------------------------------------------------------------------
 // Permissions
 // ---------------------------------------------------------------------------
-
-

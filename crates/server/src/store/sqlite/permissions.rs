@@ -1,10 +1,18 @@
 //! permissions.
 
 use super::*;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 pub fn base_permissions(conn: &Connection, guild_id: Id, user_id: Id) -> u64 {
-    let owner: Option<Id> = conn.query_row("SELECT owner_id FROM guilds WHERE id=?1", params![guild_id], |r| r.get(0)).optional().ok().flatten();
+    let owner: Option<Id> = conn
+        .query_row(
+            "SELECT owner_id FROM guilds WHERE id=?1",
+            params![guild_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .ok()
+        .flatten();
     if owner == Some(user_id) {
         return u64::MAX / 2;
     }
@@ -29,15 +37,27 @@ pub fn base_permissions(conn: &Connection, guild_id: Id, user_id: Id) -> u64 {
 }
 
 pub fn channel_permissions(conn: &Connection, channel_id: Id, user_id: Id) -> u64 {
-    let Some(channel) = channel_by_id(conn, channel_id) else { return 0 };
-    let Some(guild_id) = channel.guild_id else { return u64::MAX / 2 };
+    let Some(channel) = channel_by_id(conn, channel_id) else {
+        return 0;
+    };
+    let Some(guild_id) = channel.guild_id else {
+        return u64::MAX / 2;
+    };
     let mut perms = base_permissions(conn, guild_id, user_id);
     if perms & perm::ADMINISTRATOR != 0 {
         return perms;
     }
     let mut applies: Vec<(i64, u64, u64)> = Vec::new();
-    if let Ok(mut stmt) = conn.prepare("SELECT target_id, allow, deny FROM overwrites WHERE channel_id=?1") {
-        if let Ok(rows) = stmt.query_map(params![channel_id], |r| Ok((r.get::<_, Id>(0)?, r.get::<_, i64>(1)? as u64, r.get::<_, i64>(2)? as u64))) {
+    if let Ok(mut stmt) =
+        conn.prepare("SELECT target_id, allow, deny FROM overwrites WHERE channel_id=?1")
+    {
+        if let Ok(rows) = stmt.query_map(params![channel_id], |r| {
+            Ok((
+                r.get::<_, Id>(0)?,
+                r.get::<_, i64>(1)? as u64,
+                r.get::<_, i64>(2)? as u64,
+            ))
+        }) {
             for row in rows.flatten() {
                 applies.push(row);
             }
@@ -58,7 +78,9 @@ pub fn channel_permissions(conn: &Connection, channel_id: Id, user_id: Id) -> u6
 
 pub fn member_role_ids(conn: &Connection, guild_id: Id, user_id: Id) -> Vec<Id> {
     let mut out = Vec::new();
-    if let Ok(mut stmt) = conn.prepare("SELECT role_id FROM member_roles WHERE guild_id=?1 AND user_id=?2") {
+    if let Ok(mut stmt) =
+        conn.prepare("SELECT role_id FROM member_roles WHERE guild_id=?1 AND user_id=?2")
+    {
         if let Ok(rows) = stmt.query_map(params![guild_id, user_id], |r| r.get::<_, Id>(0)) {
             out.extend(rows.flatten());
         }
@@ -67,19 +89,29 @@ pub fn member_role_ids(conn: &Connection, guild_id: Id, user_id: Id) -> Vec<Id> 
 }
 
 pub fn can_view(conn: &Connection, channel_id: Id, user_id: Id) -> bool {
-    let Some(channel) = channel_by_id(conn, channel_id) else { return false };
+    let Some(channel) = channel_by_id(conn, channel_id) else {
+        return false;
+    };
     if channel.guild_id.is_none() {
         return is_dm_member(conn, channel_id, user_id);
     }
-    has(channel_permissions(conn, channel_id, user_id), perm::VIEW_CHANNEL)
+    has(
+        channel_permissions(conn, channel_id, user_id),
+        perm::VIEW_CHANNEL,
+    )
 }
 
 pub fn can_send(conn: &Connection, channel_id: Id, user_id: Id) -> bool {
-    let Some(channel) = channel_by_id(conn, channel_id) else { return false };
+    let Some(channel) = channel_by_id(conn, channel_id) else {
+        return false;
+    };
     if channel.guild_id.is_none() {
         return is_dm_member(conn, channel_id, user_id);
     }
-    has(channel_permissions(conn, channel_id, user_id), perm::SEND_MESSAGES)
+    has(
+        channel_permissions(conn, channel_id, user_id),
+        perm::SEND_MESSAGES,
+    )
 }
 
 pub fn is_dm_member(conn: &Connection, channel_id: Id, user_id: Id) -> bool {
@@ -105,7 +137,11 @@ pub fn overwrites(conn: &Connection, channel_id: Id) -> Vec<PermissionOverwrite>
             let kind: String = r.get("target_kind")?;
             Ok(PermissionOverwrite {
                 target_id: r.get("target_id")?,
-                kind: if kind == "member" { OverwriteKind::Member } else { OverwriteKind::Role },
+                kind: if kind == "member" {
+                    OverwriteKind::Member
+                } else {
+                    OverwriteKind::Role
+                },
                 allow: r.get::<_, i64>("allow")? as u64,
                 deny: r.get::<_, i64>("deny")? as u64,
             })
@@ -135,8 +171,14 @@ pub fn unread_for(conn: &Connection, channel_id: Id, me: Id) -> u32 {
     .unwrap_or(0) as u32
 }
 
-
-pub fn set_overwrite(conn: &Connection, channel: Id, target: Id, kind: &str, allow: u64, deny: u64) {
+pub fn set_overwrite(
+    conn: &Connection,
+    channel: Id,
+    target: Id,
+    kind: &str,
+    allow: u64,
+    deny: u64,
+) {
     conn.execute(
         "INSERT INTO overwrites(channel_id, target_id, target_kind, allow, deny) VALUES(?1,?2,?3,?4,?5)
          ON CONFLICT(channel_id, target_id, target_kind) DO UPDATE SET allow=excluded.allow, deny=excluded.deny",
@@ -145,16 +187,22 @@ pub fn set_overwrite(conn: &Connection, channel: Id, target: Id, kind: &str, all
 }
 
 pub fn delete_overwrite(conn: &Connection, channel: Id, target: Id, kind: &str) -> bool {
-    conn.execute("DELETE FROM overwrites WHERE channel_id=?1 AND target_id=?2 AND target_kind=?3", params![channel, target, kind]).ok();
+    conn.execute(
+        "DELETE FROM overwrites WHERE channel_id=?1 AND target_id=?2 AND target_kind=?3",
+        params![channel, target, kind],
+    )
+    .ok();
     conn.changes() > 0
 }
 pub fn bot_scopes(conn: &Connection, bot: Id) -> Vec<String> {
-    conn.query_row("SELECT scopes FROM applications WHERE bot_id=?1", params![bot], |r| r.get::<_, String>(0))
-        .optional()
-        .ok()
-        .flatten()
-        .map(|s| s.split_whitespace().map(str::to_string).collect())
-        .unwrap_or_else(|| vec!["bot".to_string()])
+    conn.query_row(
+        "SELECT scopes FROM applications WHERE bot_id=?1",
+        params![bot],
+        |r| r.get::<_, String>(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+    .map(|s| s.split_whitespace().map(str::to_string).collect())
+    .unwrap_or_else(|| vec!["bot".to_string()])
 }
-
-

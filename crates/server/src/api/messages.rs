@@ -1,11 +1,11 @@
 //! messages.
 
 use super::*;
-use crate::{store, AppState};
+use crate::{AppState, store};
+use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
-use axum::Json;
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
@@ -16,7 +16,12 @@ pub(crate) struct MessageQuery {
     limit: Option<u32>,
 }
 
-pub(crate) async fn list_messages(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(channel): Path<Id>, Query(q): Query<MessageQuery>) -> Result<Json<Vec<Message>>, ApiError> {
+pub(crate) async fn list_messages(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(channel): Path<Id>,
+    Query(q): Query<MessageQuery>,
+) -> Result<Json<Vec<Message>>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
     if !store::can_view(&conn, channel, me) {
@@ -32,11 +37,19 @@ pub(crate) async fn list_messages(State(state): State<Arc<AppState>>, headers: H
         }
     }
     ids.reverse();
-    let messages: Vec<Message> = ids.into_iter().filter_map(|id| store::message_by_id(&conn, id, me)).collect();
+    let messages: Vec<Message> = ids
+        .into_iter()
+        .filter_map(|id| store::message_by_id(&conn, id, me))
+        .collect();
     Ok(Json(messages))
 }
 
-pub(crate) async fn send_message(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(channel): Path<Id>, Json(body): Json<SendMessage>) -> Result<Json<Message>, ApiError> {
+pub(crate) async fn send_message(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(channel): Path<Id>,
+    Json(body): Json<SendMessage>,
+) -> Result<Json<Message>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
     if !store::can_send(&conn, channel, me) {
@@ -49,7 +62,13 @@ pub(crate) async fn send_message(State(state): State<Arc<AppState>>, headers: He
     let target = store::channel_by_id(&conn, channel).ok_or_else(not_found)?;
     let mut dest = channel;
     if target.kind == ChannelKind::Forum {
-        let title: String = content.lines().next().unwrap_or("New post").chars().take(80).collect();
+        let title: String = content
+            .lines()
+            .next()
+            .unwrap_or("New post")
+            .chars()
+            .take(80)
+            .collect();
         let tid = store::next_id(&conn);
         conn.execute(
             "INSERT INTO channels(id, guild_id, name, kind, position, thread_parent_id, owner_id) VALUES(?1,?2,?3,'thread',0,?4,?5)",
@@ -59,7 +78,11 @@ pub(crate) async fn send_message(State(state): State<Arc<AppState>>, headers: He
         dest = tid;
     }
     let id = store::next_id(&conn);
-    let kind = if body.reply_to.is_some() { "reply" } else { "default" };
+    let kind = if body.reply_to.is_some() {
+        "reply"
+    } else {
+        "default"
+    };
     conn.execute(
         "INSERT INTO messages(id, channel_id, author_id, content, timestamp, kind, reply_to) VALUES(?1,?2,?3,?4,?5,?6,?7)",
         params![id, dest, me, content, now_ms(), kind, body.reply_to],
@@ -72,7 +95,11 @@ pub(crate) async fn send_message(State(state): State<Arc<AppState>>, headers: He
         )
         .ok();
     }
-    conn.execute("UPDATE channels SET last_message_id=?1 WHERE id=?2", params![id, dest]).ok();
+    conn.execute(
+        "UPDATE channels SET last_message_id=?1 WHERE id=?2",
+        params![id, dest],
+    )
+    .ok();
     conn.execute(
         "INSERT INTO reads(user_id, channel_id, last_read_id) VALUES(?1,?2,?3)
          ON CONFLICT(user_id, channel_id) DO UPDATE SET last_read_id=excluded.last_read_id",
@@ -81,17 +108,44 @@ pub(crate) async fn send_message(State(state): State<Arc<AppState>>, headers: He
     .ok();
     let msg = store::message_by_id(&conn, id, me).ok_or_else(not_found)?;
     drop(conn);
-    let _ = state.tx.send(GatewayEvent::MessageCreate(Box::new(msg.clone())));
+    let _ = state
+        .tx
+        .send(GatewayEvent::MessageCreate(Box::new(msg.clone())));
     Ok(Json(msg))
 }
 
-pub(crate) async fn edit_message(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<Id>, Json(body): Json<EditMessage>) -> Result<Json<Message>, ApiError> {
+pub(crate) async fn edit_message(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<Id>,
+    Json(body): Json<EditMessage>,
+) -> Result<Json<Message>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    let author: Option<Id> = conn.query_row("SELECT author_id FROM messages WHERE id=?1", params![id], |r| r.get(0)).optional().map_err(internal)?;
-    let Some(author) = author else { return Err(not_found()) };
-    let channel: Id = conn.query_row("SELECT channel_id FROM messages WHERE id=?1", params![id], |r| r.get(0)).map_err(internal)?;
-    if author != me && !has(store::channel_permissions(&conn, channel, me), perm::MANAGE_MESSAGES) {
+    let author: Option<Id> = conn
+        .query_row(
+            "SELECT author_id FROM messages WHERE id=?1",
+            params![id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(internal)?;
+    let Some(author) = author else {
+        return Err(not_found());
+    };
+    let channel: Id = conn
+        .query_row(
+            "SELECT channel_id FROM messages WHERE id=?1",
+            params![id],
+            |r| r.get(0),
+        )
+        .map_err(internal)?;
+    if author != me
+        && !has(
+            store::channel_permissions(&conn, channel, me),
+            perm::MANAGE_MESSAGES,
+        )
+    {
         return Err(forbidden());
     }
     conn.execute(
@@ -101,33 +155,69 @@ pub(crate) async fn edit_message(State(state): State<Arc<AppState>>, headers: He
     .map_err(internal)?;
     let msg = store::message_by_id(&conn, id, me).ok_or_else(not_found)?;
     drop(conn);
-    let _ = state.tx.send(GatewayEvent::MessageUpdate(Box::new(msg.clone())));
+    let _ = state
+        .tx
+        .send(GatewayEvent::MessageUpdate(Box::new(msg.clone())));
     Ok(Json(msg))
 }
 
-pub(crate) async fn delete_message(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<Id>) -> Result<Json<serde_json::Value>, ApiError> {
+pub(crate) async fn delete_message(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<Id>,
+) -> Result<Json<serde_json::Value>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
     let row: Option<(Id, Id)> = conn
-        .query_row("SELECT author_id, channel_id FROM messages WHERE id=?1", params![id], |r| Ok((r.get(0)?, r.get(1)?)))
+        .query_row(
+            "SELECT author_id, channel_id FROM messages WHERE id=?1",
+            params![id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
         .optional()
         .map_err(internal)?;
-    let Some((author, channel)) = row else { return Err(not_found()) };
-    if author != me && !has(store::channel_permissions(&conn, channel, me), perm::MANAGE_MESSAGES) {
+    let Some((author, channel)) = row else {
+        return Err(not_found());
+    };
+    if author != me
+        && !has(
+            store::channel_permissions(&conn, channel, me),
+            perm::MANAGE_MESSAGES,
+        )
+    {
         return Err(forbidden());
     }
-    conn.execute("DELETE FROM messages WHERE id=?1", params![id]).ok();
-    conn.execute("DELETE FROM reactions WHERE message_id=?1", params![id]).ok();
+    conn.execute("DELETE FROM messages WHERE id=?1", params![id])
+        .ok();
+    conn.execute("DELETE FROM reactions WHERE message_id=?1", params![id])
+        .ok();
     drop(conn);
-    let _ = state.tx.send(GatewayEvent::MessageDelete { channel_id: channel, message_id: id });
+    let _ = state.tx.send(GatewayEvent::MessageDelete {
+        channel_id: channel,
+        message_id: id,
+    });
     Ok(Json(json!({ "ok": true })))
 }
 
-pub(crate) async fn toggle_reaction(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<Id>, Json(body): Json<ReactionToggle>) -> Result<Json<Message>, ApiError> {
+pub(crate) async fn toggle_reaction(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<Id>,
+    Json(body): Json<ReactionToggle>,
+) -> Result<Json<Message>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    let channel: Option<Id> = conn.query_row("SELECT channel_id FROM messages WHERE id=?1", params![id], |r| r.get(0)).optional().map_err(internal)?;
-    let Some(channel) = channel else { return Err(not_found()) };
+    let channel: Option<Id> = conn
+        .query_row(
+            "SELECT channel_id FROM messages WHERE id=?1",
+            params![id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(internal)?;
+    let Some(channel) = channel else {
+        return Err(not_found());
+    };
     if !store::can_view(&conn, channel, me) {
         return Err(forbidden());
     }
@@ -142,56 +232,106 @@ pub(crate) async fn toggle_reaction(State(state): State<Arc<AppState>>, headers:
         .map_err(internal)?
         .is_some();
     if existing {
-        conn.execute("DELETE FROM reactions WHERE message_id=?1 AND emoji=?2 AND user_id=?3", params![id, emoji, me]).ok();
+        conn.execute(
+            "DELETE FROM reactions WHERE message_id=?1 AND emoji=?2 AND user_id=?3",
+            params![id, emoji, me],
+        )
+        .ok();
     } else {
-        conn.execute("INSERT OR IGNORE INTO reactions(message_id, emoji, user_id) VALUES(?1,?2,?3)", params![id, emoji, me]).ok();
+        conn.execute(
+            "INSERT OR IGNORE INTO reactions(message_id, emoji, user_id) VALUES(?1,?2,?3)",
+            params![id, emoji, me],
+        )
+        .ok();
     }
     let msg = store::message_by_id(&conn, id, me).ok_or_else(not_found)?;
     drop(conn);
-    let _ = state.tx.send(GatewayEvent::ReactionUpdate(Box::new(msg.clone())));
+    let _ = state
+        .tx
+        .send(GatewayEvent::ReactionUpdate(Box::new(msg.clone())));
     Ok(Json(msg))
 }
 
-pub(crate) async fn toggle_pin(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<Id>) -> Result<Json<Message>, ApiError> {
+pub(crate) async fn toggle_pin(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<Id>,
+) -> Result<Json<Message>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    let pinned: Option<bool> = conn.query_row("SELECT pinned FROM messages WHERE id=?1", params![id], |r| Ok(r.get::<_, i64>(0)? != 0)).optional().map_err(internal)?;
-    let Some(pinned) = pinned else { return Err(not_found()) };
-    conn.execute("UPDATE messages SET pinned=?1 WHERE id=?2", params![(!pinned) as i64, id]).map_err(internal)?;
+    let pinned: Option<bool> = conn
+        .query_row(
+            "SELECT pinned FROM messages WHERE id=?1",
+            params![id],
+            |r| Ok(r.get::<_, i64>(0)? != 0),
+        )
+        .optional()
+        .map_err(internal)?;
+    let Some(pinned) = pinned else {
+        return Err(not_found());
+    };
+    conn.execute(
+        "UPDATE messages SET pinned=?1 WHERE id=?2",
+        params![(!pinned) as i64, id],
+    )
+    .map_err(internal)?;
     let msg = store::message_by_id(&conn, id, me).ok_or_else(not_found)?;
     drop(conn);
-    let _ = state.tx.send(GatewayEvent::MessageUpdate(Box::new(msg.clone())));
+    let _ = state
+        .tx
+        .send(GatewayEvent::MessageUpdate(Box::new(msg.clone())));
     Ok(Json(msg))
 }
 
-pub(crate) async fn list_pins(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(channel): Path<Id>) -> Result<Json<Vec<Message>>, ApiError> {
+pub(crate) async fn list_pins(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(channel): Path<Id>,
+) -> Result<Json<Vec<Message>>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
     if !store::can_view(&conn, channel, me) {
         return Err(forbidden());
     }
     let mut ids = Vec::new();
-    if let Ok(mut stmt) = conn.prepare("SELECT id FROM messages WHERE channel_id=?1 AND pinned=1 ORDER BY id DESC") {
+    if let Ok(mut stmt) =
+        conn.prepare("SELECT id FROM messages WHERE channel_id=?1 AND pinned=1 ORDER BY id DESC")
+    {
         if let Ok(rows) = stmt.query_map(params![channel], |r| r.get::<_, Id>(0)) {
             ids.extend(rows.flatten());
         }
     }
-    let out = ids.into_iter().filter_map(|id| store::message_by_id(&conn, id, me)).collect();
+    let out = ids
+        .into_iter()
+        .filter_map(|id| store::message_by_id(&conn, id, me))
+        .collect();
     Ok(Json(out))
 }
 
-pub(crate) async fn typing(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(channel): Path<Id>) -> Result<Json<serde_json::Value>, ApiError> {
+pub(crate) async fn typing(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(channel): Path<Id>,
+) -> Result<Json<serde_json::Value>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
     if !store::can_view(&conn, channel, me) {
         return Err(forbidden());
     }
     drop(conn);
-    let _ = state.tx.send(GatewayEvent::TypingStart { channel_id: channel, user_id: me, until_ms: now_ms() + 8000 });
+    let _ = state.tx.send(GatewayEvent::TypingStart {
+        channel_id: channel,
+        user_id: me,
+        until_ms: now_ms() + 8000,
+    });
     Ok(Json(json!({ "ok": true })))
 }
 
-pub(crate) async fn list_threads(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(channel): Path<Id>) -> Result<Json<Vec<Channel>>, ApiError> {
+pub(crate) async fn list_threads(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(channel): Path<Id>,
+) -> Result<Json<Vec<Channel>>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
     if !store::can_view(&conn, channel, me) {
@@ -200,7 +340,12 @@ pub(crate) async fn list_threads(State(state): State<Arc<AppState>>, headers: He
     Ok(Json(store::list_threads(&conn, channel, me)))
 }
 
-pub(crate) async fn create_thread(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(channel): Path<Id>, Json(body): Json<CreateMessageThread>) -> Result<Json<Channel>, ApiError> {
+pub(crate) async fn create_thread(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(channel): Path<Id>,
+    Json(body): Json<CreateMessageThread>,
+) -> Result<Json<Channel>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
     if !store::can_view(&conn, channel, me) {
@@ -208,7 +353,11 @@ pub(crate) async fn create_thread(State(state): State<Arc<AppState>>, headers: H
     }
     let parent = store::channel_by_id(&conn, channel).ok_or_else(not_found)?;
     let id = store::next_id(&conn);
-    let name = if body.name.trim().is_empty() { "New thread".to_string() } else { body.name.trim().chars().take(80).collect() };
+    let name = if body.name.trim().is_empty() {
+        "New thread".to_string()
+    } else {
+        body.name.trim().chars().take(80).collect()
+    };
     conn.execute(
         "INSERT INTO channels(id, guild_id, name, kind, position, thread_parent_id, owner_id) VALUES(?1,?2,?3,'thread',0,?4,?5)",
         params![id, parent.guild_id, name, channel, me],
@@ -216,7 +365,9 @@ pub(crate) async fn create_thread(State(state): State<Arc<AppState>>, headers: H
     .map_err(internal)?;
     let thread = store::channel_by_id(&conn, id).ok_or_else(not_found)?;
     drop(conn);
-    let _ = state.tx.send(GatewayEvent::ChannelCreate(Box::new(thread.clone())));
+    let _ = state
+        .tx
+        .send(GatewayEvent::ChannelCreate(Box::new(thread.clone())));
     Ok(Json(thread))
 }
 
@@ -230,16 +381,25 @@ pub(crate) struct SearchQuery {
     limit: Option<u32>,
 }
 
-pub(crate) async fn search(State(state): State<Arc<AppState>>, headers: HeaderMap, Query(q): Query<SearchQuery>) -> Result<Json<SearchResults>, ApiError> {
+pub(crate) async fn search(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(q): Query<SearchQuery>,
+) -> Result<Json<SearchResults>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
     let term = format!("%{}%", q.q.trim());
     if q.q.trim().is_empty() {
-        return Ok(Json(SearchResults { total: 0, hits: Vec::new() }));
+        return Ok(Json(SearchResults {
+            total: 0,
+            hits: Vec::new(),
+        }));
     }
     let limit = q.limit.unwrap_or(50).clamp(1, 100);
     let mut rows: Vec<(Id, Id)> = Vec::new();
-    if let Ok(mut stmt) = conn.prepare("SELECT id, channel_id FROM messages WHERE content LIKE ?1 ORDER BY id DESC LIMIT 400") {
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT id, channel_id FROM messages WHERE content LIKE ?1 ORDER BY id DESC LIMIT 400",
+    ) {
         if let Ok(iter) = stmt.query_map(params![term], |r| Ok((r.get(0)?, r.get(1)?))) {
             for (id, ch) in iter.flatten() {
                 if store::can_view(&conn, ch, me) {
@@ -253,9 +413,20 @@ pub(crate) async fn search(State(state): State<Arc<AppState>>, headers: HeaderMa
     }
     let mut hits = Vec::new();
     for (id, ch) in rows {
-        let Some(message) = store::message_by_id(&conn, id, me) else { continue };
-        let Some(channel) = store::channel_by_id(&conn, ch) else { continue };
-        let guild = channel.guild_id.and_then(|g| conn.query_row("SELECT name FROM guilds WHERE id=?1", params![g], |r| r.get::<_, String>(0)).optional().ok().flatten());
+        let Some(message) = store::message_by_id(&conn, id, me) else {
+            continue;
+        };
+        let Some(channel) = store::channel_by_id(&conn, ch) else {
+            continue;
+        };
+        let guild = channel.guild_id.and_then(|g| {
+            conn.query_row("SELECT name FROM guilds WHERE id=?1", params![g], |r| {
+                r.get::<_, String>(0)
+            })
+            .optional()
+            .ok()
+            .flatten()
+        });
         let author = store::user_by_id(&conn, message.author_id).unwrap_or_default();
         hits.push(SearchHit {
             message,
@@ -266,10 +437,12 @@ pub(crate) async fn search(State(state): State<Arc<AppState>>, headers: HeaderMa
             author,
         });
     }
-    Ok(Json(SearchResults { total: hits.len() as u32, hits }))
+    Ok(Json(SearchResults {
+        total: hits.len() as u32,
+        hits,
+    }))
 }
 
 // ---------------------------------------------------------------------------
 // Friends and DMs
 // ---------------------------------------------------------------------------
-
