@@ -7,9 +7,33 @@ Standalone Rust service for Runecord: HTTP API, WebSocket gateway, SQLite storag
 ```
 crates/protocol      wire + domain types shared with the client
 crates/server        axum routes, gateway, workers
+crates/server/src/api
+  mod.rs             router, auth helpers, errors
+  auth.rs            register/login/logout
+  users.rs           profiles, batch authors, read state
+  guilds.rs          guild detail and guild CRUD
+  members.rs         paginated members and member updates
+  channels.rs        channels, overwrites, threads
+  messages.rs        messages, reactions, pins, search
+  media.rs           uploads and the CDN/thumbnail path
+  roles.rs           role CRUD
+  invites.rs         invite create/info/join
+  social.rs          friends and DMs
+  bots.rs            bot account CRUD
+  gateway.rs         websocket loop and event filtering
+  misc.rs            cache stats and small helpers
 crates/server/src/store
   mod.rs             Store trait + SqliteStore boundary
-  sqlite.rs          SQLite adapter, permissions, seed
+  sqlite/mod.rs      migrations and connection setup
+  sqlite/model.rs    row mappers and message assembly
+  sqlite/permissions.rs  base/channel permissions and overwrites
+  sqlite/guilds.rs   summaries, detail, emoji, children
+  sqlite/members.rs  member pages, counts, bootstrap
+  sqlite/auth.rs     passwords, tokens and bot ownership
+  sqlite/messages.rs message windows and threads
+  sqlite/platform.rs apps, webhooks, audit, CDN registry
+  sqlite/seed.rs     demo seed
+  sqlite/tests.rs    large-guild store tests
 migrations/          numbered SQL applied at startup
 data/                runtime database + uploads (gitignored)
 ```
@@ -35,6 +59,17 @@ The first start creates `data/runecord.db`, applies `migrations/`, and seeds the
 ## Storage
 
 Phase 1 keeps SQLite (WAL) behind `store::Store`, with SQLite queries in `store::sqlite`. Phase 2 adds a Postgres adapter behind the same trait and moves the remaining direct `store.conn()` handler queries into trait methods. Postgres is the intended production adapter; SQLite stays the zero-install local adapter.
+
+## Caching
+
+There is no external cache and no Redis. One process serves accounts on loopback, so the cache is an in-process, bounded map (`src/cache.rs`), and the database already lives in memory.
+
+- **Guild detail** (`GET /api/guilds/{id}`): LRU of 256 entries keyed by `(guild, user, generation)`, where generation is SQLite's monotonic `total_changes()`. Any write invalidates every entry by construction; no timer or manual invalidation path exists.
+- **Thumbnails**: decoded 480 px PNG bytes are kept in a 32 MB / 256-entry LRU, so repeated `?w=480` reads skip the disk read, AES decrypt and image decode.
+- **Disk thumbnails**: `data/thumbs` is pruned to 512 MB by age at startup and every five minutes.
+- **CDN originals**: content-addressed and immutable, served with `Cache-Control: max-age=31536000, immutable`.
+
+`GET /api/cache` returns entries, weight, hits and misses for both caches. Redis would only become necessary when more than one server process must share cache state; that is the multi-node phase, not the local design.
 
 ## API surface
 

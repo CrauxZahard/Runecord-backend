@@ -116,6 +116,7 @@ impl SqliteStore {
 }
 
 /// The storage contract a Postgres adapter will implement later.
+#[allow(dead_code)]
 pub trait Store: Send + Sync {
     fn session_user(&self, token: &str) -> Option<Id>;
     fn bootstrap(&self, me: Id) -> Bootstrap;

@@ -1,6 +1,7 @@
-//! Runecord's local server: SQLite, HTTP API, and the WebSocket gateway.
+﻿//! Runecord's local server: SQLite, HTTP API, and the WebSocket gateway.
 
 mod api;
+mod cache;
 mod compat;
 mod crypto;
 mod gateway_v10;
@@ -24,6 +25,12 @@ pub struct AppState {
     pub v10: gateway_v10::Sessions,
     pub voice: std::sync::Mutex<HashMap<i64, runecord_protocol::VoiceState>>,
     pub interactions: std::sync::Mutex<HashMap<String, PendingInteraction>>,
+    pub guild_cache: std::sync::Mutex<
+        cache::BoundedCache<(i64, i64, i64), std::sync::Arc<runecord_protocol::GuildDetail>>,
+    >,
+    pub thumb_cache: std::sync::Mutex<
+        cache::BoundedCache<(String, u32), axum::body::Bytes>,
+    >,
 }
 
 #[derive(Clone)]
@@ -84,6 +91,8 @@ async fn main() {
     store.flush_now();
 
     let (tx, _) = broadcast::channel(1024);
+    let _ = std::fs::create_dir_all(data.join("thumbs"));
+    cache::prune_dir(&data.join("thumbs"), cache::THUMB_DISK_BYTES);
     let state = Arc::new(AppState {
         store,
         tx,
@@ -94,15 +103,30 @@ async fn main() {
         v10: gateway_v10::Sessions::new(),
         voice: std::sync::Mutex::new(HashMap::new()),
         interactions: std::sync::Mutex::new(HashMap::new()),
+        guild_cache: std::sync::Mutex::new(cache::BoundedCache::new(
+            cache::GUILD_CACHE_ENTRIES,
+            usize::MAX,
+            |_| 1,
+        )),
+        thumb_cache: std::sync::Mutex::new(cache::BoundedCache::new(
+            cache::THUMB_CACHE_ENTRIES,
+            cache::THUMB_CACHE_BYTES,
+            |bytes| bytes.len(),
+        )),
     });
 
     gateway_v10::spawn_pump(state.clone());
     {
         let store = state.clone();
         tokio::spawn(async move {
+            let mut ticks = 0u32;
             loop {
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 store.store.flush_if_changed();
+                ticks = ticks.wrapping_add(1);
+                if ticks % 150 == 0 {
+                    cache::prune_dir(&store.data_dir.join("thumbs"), cache::THUMB_DISK_BYTES);
+                }
             }
         });
     }
