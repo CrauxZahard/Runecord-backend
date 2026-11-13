@@ -194,6 +194,12 @@ pub struct GuildSummary {
     pub created_at: i64,
     #[serde(default)]
     pub discoverable: bool,
+    #[serde(default)]
+    pub boosts: u32,
+    #[serde(default)]
+    pub boost_level: u32,
+    #[serde(default)]
+    pub boosted_by_me: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

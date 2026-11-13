@@ -68,6 +68,57 @@ pub(crate) async fn guild_commands(
     Ok(Json(store::commands_in_guild(&conn, guild)))
 }
 
+pub(crate) async fn boost_guild(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild): Path<Id>,
+) -> Result<Json<GuildSummary>, ApiError> {
+    change_boost(state, headers, guild, true).await
+}
+
+pub(crate) async fn unboost_guild(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild): Path<Id>,
+) -> Result<Json<GuildSummary>, ApiError> {
+    change_boost(state, headers, guild, false).await
+}
+
+async fn change_boost(
+    state: Arc<AppState>,
+    headers: HeaderMap,
+    guild: Id,
+    on: bool,
+) -> Result<Json<GuildSummary>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    if !store::guild_member(&conn, guild, me) {
+        return Err(forbidden());
+    }
+    if on {
+        store::boost_guild(&conn, guild, me);
+    } else {
+        store::unboost_guild(&conn, guild, me);
+    }
+    let summary = store::guild_summary_with_unread(&conn, guild, me)
+        .map(|(summary, _)| summary)
+        .ok_or_else(not_found)?;
+    drop(conn);
+    let _ = state.tx.send(GatewayEvent::GuildUpdate(Box::new(Guild {
+        id: guild,
+        name: summary.name.clone(),
+        icon_color: summary.icon_color,
+        owner_id: summary.owner_id,
+        description: summary.description.clone(),
+        member_count: summary.member_count,
+        tag: summary.tag.clone(),
+        permissions: summary.permissions,
+        created_at: summary.created_at,
+        ..Guild::default()
+    })));
+    Ok(Json(summary))
+}
+
 pub(crate) async fn leave_guild(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,

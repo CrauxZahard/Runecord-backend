@@ -263,6 +263,54 @@ fn public_directory_excludes_joined_servers() {
 }
 
 #[test]
+fn boosts_persist_and_raise_levels() {
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    for id in 1..=3 {
+        conn.execute(
+            "INSERT INTO users(id, username, display_name, pass_hash, created_at) VALUES(?1,?2,?2,'x',1)",
+            params![id, format!("user{id}")],
+        )
+        .unwrap();
+    }
+    conn.execute(
+        "INSERT INTO guilds(id, name, icon_color, owner_id, description, created_at, everyone_role_id) VALUES(1,'Guild',0,1,'',1,10)",
+        [],
+    )
+    .unwrap();
+    for id in 1..=3 {
+        conn.execute(
+            "INSERT INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(1,?1,'',1)",
+            params![id],
+        )
+        .unwrap();
+    }
+    assert_eq!(boost_count(&conn, 1), 0);
+    assert_eq!(boost_level(0), 0);
+    assert_eq!(boost_level(2), 1);
+    assert_eq!(boost_level(7), 2);
+    assert_eq!(boost_level(14), 3);
+    assert_eq!(boost_level(99), 3);
+
+    assert!(boost_guild(&conn, 1, 1));
+    assert!(!boost_guild(&conn, 1, 1), "a member boosts once");
+    assert!(boost_guild(&conn, 1, 2));
+    assert_eq!(boost_count(&conn, 1), 2);
+    assert!(boosted_by(&conn, 1, 1));
+    assert!(!boosted_by(&conn, 1, 3));
+    let (summary, _) = guild_summary_with_unread(&conn, 1, 2).expect("summary");
+    assert_eq!(summary.boosts, 2);
+    assert_eq!(summary.boost_level, 1);
+    assert!(summary.boosted_by_me);
+
+    assert!(unboost_guild(&conn, 1, 2));
+    assert_eq!(boost_count(&conn, 1), 1);
+    assert!(!boosted_by(&conn, 1, 2));
+    let (summary, _) = guild_summary_with_unread(&conn, 1, 2).expect("summary");
+    assert_eq!(summary.boost_level, 0);
+}
+
+#[test]
 fn ban_appeals_update_and_resolve() {
     let conn = Connection::open_in_memory().expect("memory db");
     migrate(&conn).expect("migrate");

@@ -195,6 +195,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/guilds/{id}/commands", get(guild_commands))
         .route("/api/guilds/{id}/leave", post(leave_guild))
         .route(
+            "/api/guilds/{id}/boost",
+            post(boost_guild).delete(unboost_guild),
+        )
+        .route(
             "/api/guilds/{id}/discoverable",
             post(set_guild_discoverable),
         )

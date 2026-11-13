@@ -35,6 +35,9 @@ pub fn guild_summary_with_unread(
         .ok()
         .flatten()?;
     summary.permissions = base_permissions(conn, guild_id, me);
+    summary.boosts = boost_count(conn, guild_id);
+    summary.boost_level = boost_level(summary.boosts);
+    summary.boosted_by_me = boosted_by(conn, guild_id, me);
     summary.member_count = conn
         .query_row(
             "SELECT COUNT(*) FROM guild_members WHERE guild_id=?1",

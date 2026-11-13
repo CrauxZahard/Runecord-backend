@@ -51,6 +51,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0012_notification_suppression",
         include_str!("../../../../../migrations/0012_notification_suppression.sql"),
     ),
+    (
+        "0013_guild_boosts",
+        include_str!("../../../../../migrations/0013_guild_boosts.sql"),
+    ),
 ];
 
 /// Applies numbered migrations once each and returns the connection.
@@ -98,6 +102,7 @@ pub fn next_id(conn: &Connection) -> i64 {
 // ---------------------------------------------------------------------------
 
 mod auth;
+mod boosts;
 mod bootstrap;
 mod discovery;
 mod guilds;
@@ -112,6 +117,7 @@ mod privacy;
 mod seed;
 
 pub use auth::*;
+pub use boosts::*;
 pub use bootstrap::*;
 pub use discovery::*;
 pub use guilds::*;
