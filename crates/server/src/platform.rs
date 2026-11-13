@@ -716,10 +716,21 @@ async fn delete_emoji(
     ) {
         return Err(forbidden());
     }
+    let name = store::guild_emojis(&conn, guild)
+        .into_iter()
+        .find(|item| item.id == emoji)
+        .map(|item| item.name);
     if !store::delete_emoji(&conn, guild, emoji) {
         return Err(not_found());
     }
-    store::record_audit(&conn, guild, me, 61, Some(emoji), json!([]));
+    store::record_audit(
+        &conn,
+        guild,
+        me,
+        61,
+        Some(emoji),
+        json!([{ "key": "name", "old_value": name }]),
+    );
     drop(conn);
     let _ = state.tx.send(GatewayEvent::GuildMembers {
         guild_id: guild,

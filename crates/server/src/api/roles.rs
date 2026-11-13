@@ -44,6 +44,14 @@ pub(crate) async fn create_role(
             store::role_from_row,
         )
         .map_err(internal)?;
+    store::record_audit(
+        &conn,
+        guild,
+        me,
+        10,
+        Some(role.id),
+        json!([{ "key": "name", "new_value": role.name }, { "key": "permissions", "new_value": role.permissions }]),
+    );
     drop(conn);
     let _ = state
         .tx
@@ -64,6 +72,14 @@ pub(crate) async fn update_role(
         return Err(forbidden());
     }
     let admin = actor & perm::ADMINISTRATOR != 0;
+    let audit_changes = json!({
+        "name": body.name.clone(),
+        "color": body.color,
+        "permissions": body.permissions,
+        "hoist": body.hoist,
+        "mentionable": body.mentionable,
+        "position": body.position,
+    });
     if !admin {
         if let Some(pos) = store::role_position(&conn, guild, role) {
             if pos > 0 && pos >= store::member_top_role(&conn, guild, me) {
@@ -125,6 +141,7 @@ pub(crate) async fn update_role(
             store::role_from_row,
         )
         .map_err(internal)?;
+    store::record_audit(&conn, guild, me, 11, Some(role), audit_changes);
     drop(conn);
     let _ = state
         .tx
@@ -151,6 +168,13 @@ pub(crate) async fn delete_role(
             }
         }
     }
+    let name: String = conn
+        .query_row(
+            "SELECT name FROM roles WHERE id=?1 AND guild_id=?2",
+            params![role, guild],
+            |r| r.get(0),
+        )
+        .unwrap_or_default();
     conn.execute(
         "DELETE FROM roles WHERE id=?1 AND guild_id=?2 AND name<>'@everyone'",
         params![role, guild],
@@ -166,6 +190,14 @@ pub(crate) async fn delete_role(
         params![role, guild],
     )
     .ok();
+    store::record_audit(
+        &conn,
+        guild,
+        me,
+        12,
+        Some(role),
+        json!([{ "key": "name", "old_value": name }]),
+    );
     drop(conn);
     let _ = state.tx.send(GatewayEvent::RoleDelete {
         guild_id: guild,

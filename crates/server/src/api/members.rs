@@ -91,6 +91,7 @@ pub(crate) async fn update_member(
             return Err(forbidden());
         }
     }
+    let roles_changed = body.role_ids.is_some();
     if let Some(nick) = body.nickname {
         conn.execute(
             "UPDATE guild_members SET nickname=?1 WHERE guild_id=?2 AND user_id=?3",
@@ -136,6 +137,16 @@ pub(crate) async fn update_member(
         roles: store::member_role_ids(&conn, guild, user),
         joined_at: now_ms(),
     };
+    if roles_changed {
+        store::record_audit(
+            &conn,
+            guild,
+            me,
+            20,
+            Some(user),
+            json!([{ "key": "roles", "new_value": member.roles }]),
+        );
+    }
     drop(conn);
     let _ = state
         .tx

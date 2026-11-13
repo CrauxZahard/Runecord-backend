@@ -73,7 +73,7 @@ There is no external cache and no Redis. One process serves accounts on loopback
 
 ## API surface
 
-`POST /api/register`, `/api/login`, `/api/logout` · `GET /api/bootstrap` · `PATCH /api/me` · `POST /api/me/password` · `GET /api/users/lookup?q=` · guilds/channels/messages/reactions/pins/threads · friends/DMs · invites · roles · bots · applications/install links/commands · guild emojis · uploads · `GET /gateway` (WebSocket).
+`POST /api/register`, `/api/login`, `/api/logout` · `GET /api/bootstrap` · `PATCH /api/me` · `POST /api/me/password` · `GET /api/users/lookup?q=` · guilds/channels/messages/reactions/pins/threads · friends/DMs · invites · roles · bots · applications/install links/commands · guild emojis · audit logs · uploads · `GET /gateway` (WebSocket).
 
 ### Bot accounts
 

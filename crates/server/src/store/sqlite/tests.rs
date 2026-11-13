@@ -42,6 +42,28 @@ fn dm_channels_carry_send_permissions() {
 }
 
 #[test]
+fn audit_pages_newest_first() {
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    for index in 0..60 {
+        record_audit(
+            &conn,
+            1,
+            1,
+            11,
+            None,
+            serde_json::json!([{ "key": "step", "new_value": index }]),
+        );
+    }
+    let first = audit_entries(&conn, 1, 50, None);
+    assert_eq!(first.len(), 50);
+    assert!(first[0].id > first[49].id);
+    let older = audit_entries(&conn, 1, 50, Some(first[49].id));
+    assert_eq!(older.len(), 10);
+    assert!(older[0].id < first[49].id);
+}
+
+#[test]
 fn member_pages_do_not_load_every_member() {
     let conn = Connection::open_in_memory().expect("memory db");
     migrate(&conn).expect("migrate");
