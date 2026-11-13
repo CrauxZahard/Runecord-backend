@@ -283,6 +283,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/friends/{id}/accept", post(friend_accept))
         .route("/api/friends/{id}/remove", post(friend_remove))
         .route("/api/friends/{id}/block", post(friend_block))
+        .route("/api/dms/group", post(create_group_dm))
         .route("/api/dms/{id}", post(open_dm))
         .route("/gateway", get(gateway))
         .route("/voice", get(voice_socket))

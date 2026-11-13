@@ -818,6 +818,7 @@ pub enum GatewayEvent {
         guild_id: Id,
         count: u32,
     },
+    DmCreate(Box<DmChannel>),
     GuildMembers {
         guild_id: Id,
         members: Vec<Member>,

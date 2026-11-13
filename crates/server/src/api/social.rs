@@ -6,6 +6,7 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use rusqlite::{OptionalExtension, params};
+use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -91,6 +92,79 @@ pub(crate) async fn friend_block(
             since: now_ms(),
         })));
     Ok(Json(json!({ "ok": true })))
+}
+
+#[derive(Deserialize)]
+pub(crate) struct GroupDmBody {
+    #[serde(default)]
+    name: String,
+    user_ids: Vec<Id>,
+}
+
+pub(crate) async fn create_group_dm(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(body): Json<GroupDmBody>,
+) -> Result<Json<DmChannel>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let mut users: Vec<Id> = Vec::new();
+    for user in body.user_ids {
+        if user != me && !users.contains(&user) {
+            users.push(user);
+        }
+    }
+    if users.len() < 2 {
+        return Err(bad("Pick at least two friends."));
+    }
+    if users.len() > 9 {
+        return Err(bad("Group DMs support up to 10 people."));
+    }
+    let conn = state.store.conn();
+    for user in &users {
+        let Some(target) = store::user_by_id(&conn, *user) else {
+            return Err(not_found());
+        };
+        if !store::can_dm(&conn, me, target.id) {
+            return Err(ApiError(
+                StatusCode::FORBIDDEN,
+                format!(
+                    "{}'s privacy settings do not allow new direct messages.",
+                    target.display_name
+                ),
+            ));
+        }
+    }
+    let name = body.name.trim().chars().take(100).collect::<String>();
+    let id = store::next_id(&conn);
+    conn.execute(
+        "INSERT INTO channels(id, guild_id, name, kind, topic) VALUES(?1,NULL,?2,'group_dm','')",
+        params![id, name],
+    )
+    .map_err(internal)?;
+    conn.execute(
+        "INSERT INTO dm_members(channel_id, user_id) VALUES(?1,?2)",
+        params![id, me],
+    )
+    .ok();
+    for user in &users {
+        conn.execute(
+            "INSERT INTO dm_members(channel_id, user_id) VALUES(?1,?2)",
+            params![id, user],
+        )
+        .ok();
+    }
+    let channel = store::channel_by_id(&conn, id).ok_or_else(not_found)?;
+    let recipients = users
+        .iter()
+        .filter_map(|user| store::user_by_id(&conn, *user))
+        .collect::<Vec<_>>();
+    let dm = DmChannel {
+        channel,
+        recipients,
+    };
+    drop(conn);
+    let _ = state.tx.send(GatewayEvent::DmCreate(Box::new(dm.clone())));
+    Ok(Json(dm))
 }
 
 pub(crate) async fn open_dm(

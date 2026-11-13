@@ -42,6 +42,60 @@ fn dm_channels_carry_send_permissions() {
 }
 
 #[test]
+fn group_dms_keep_name_and_scope_messages_to_members() {
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    for id in 1..=4 {
+        conn.execute(
+            "INSERT INTO users(id, username, display_name, pass_hash, created_at) VALUES(?1,?2,?2,'x',1)",
+            params![id, format!("user{id}")],
+        )
+        .unwrap();
+    }
+    conn.execute(
+        "INSERT INTO channels(id, guild_id, name, kind, topic) VALUES(901,NULL,'Design Crew','group_dm','')",
+        [],
+    )
+    .unwrap();
+    for id in 1..=3 {
+        conn.execute(
+            "INSERT INTO dm_members(channel_id,user_id) VALUES(901,?1)",
+            params![id],
+        )
+        .unwrap();
+    }
+
+    let channel = channel_by_id(&conn, 901).expect("group dm channel");
+    assert_eq!(channel.kind, ChannelKind::GroupDm);
+    assert_eq!(channel.name, "Design Crew");
+
+    for id in 1..=3 {
+        assert!(is_dm_member(&conn, 901, id));
+        assert!(can_view(&conn, 901, id));
+        assert!(can_send(&conn, 901, id));
+    }
+    assert!(!is_dm_member(&conn, 901, 4));
+    assert!(!can_view(&conn, 901, 4));
+    assert!(!can_send(&conn, 901, 4));
+
+    let bootstrap = bootstrap(&conn, 1);
+    let group = bootstrap
+        .dms
+        .iter()
+        .find(|dm| dm.channel.id == 901)
+        .expect("group dm in bootstrap");
+    assert_eq!(group.channel.kind, ChannelKind::GroupDm);
+    assert_eq!(group.channel.name, "Design Crew");
+    let mut names: Vec<String> = group
+        .recipients
+        .iter()
+        .map(|user| user.display_name.clone())
+        .collect();
+    names.sort();
+    assert_eq!(names, vec!["user2", "user3"]);
+}
+
+#[test]
 fn channel_member_pages_hide_denied_members() {
     let conn = Connection::open_in_memory().expect("memory db");
     migrate(&conn).expect("migrate");

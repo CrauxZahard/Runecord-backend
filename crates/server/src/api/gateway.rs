@@ -52,6 +52,7 @@ pub(crate) fn gateway_event_visible(state: &AppState, me: Id, event: &GatewayEve
         GatewayEvent::MessageDelete { channel_id, .. } => store::can_view(&conn, *channel_id, me),
         GatewayEvent::TypingStart { channel_id, .. } => store::can_view(&conn, *channel_id, me),
         GatewayEvent::PresenceUpdate { user_id, .. } => related_user(&conn, me, *user_id),
+        GatewayEvent::DmCreate(dm) => store::can_view(&conn, dm.channel.id, me),
         GatewayEvent::ChannelCreate(c) | GatewayEvent::ChannelUpdate(c) => {
             store::can_view(&conn, c.id, me)
         }
