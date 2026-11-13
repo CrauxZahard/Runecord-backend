@@ -17,14 +17,22 @@ pub(crate) async fn upload(
     body: axum::body::Bytes,
 ) -> Result<Json<UploadResponse>, ApiError> {
     let me = auth_user(&state, &headers)?;
-    {
+    let limit = {
         let conn = state.store.conn();
         if !store::can_send(&conn, channel, me) {
             return Err(forbidden());
         }
-    }
-    if body.len() > 48 * 1024 * 1024 {
-        return Err(bad("File is larger than 48 MB."));
+        let level = store::channel_by_id(&conn, channel)
+            .and_then(|target| target.guild_id)
+            .map(|guild| store::boost_level(store::boost_count(&conn, guild)))
+            .unwrap_or(0);
+        store::upload_limit_bytes(level)
+    };
+    if body.len() as u64 > limit {
+        let mb = limit / (1024 * 1024);
+        return Err(bad(&format!(
+            "File is larger than {mb} MB. Boost the server to raise the limit."
+        )));
     }
     let clean: String = q
         .name

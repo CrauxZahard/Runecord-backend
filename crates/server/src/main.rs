@@ -137,7 +137,7 @@ async fn main() {
     let app = api::router(state.clone())
         .nest("/api/v1", compat::router(state.clone()))
         .merge(platform::router(state.clone()))
-        .layer(DefaultBodyLimit::max(48 * 1024 * 1024))
+        .layer(DefaultBodyLimit::max(128 * 1024 * 1024))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             ratelimit::middleware,

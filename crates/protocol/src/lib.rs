@@ -200,6 +200,10 @@ pub struct GuildSummary {
     pub boost_level: u32,
     #[serde(default)]
     pub boosted_by_me: bool,
+    #[serde(default)]
+    pub upload_limit_bytes: u64,
+    #[serde(default)]
+    pub voice_kbps: u32,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

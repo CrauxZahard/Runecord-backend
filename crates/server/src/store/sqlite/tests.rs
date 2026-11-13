@@ -263,6 +263,55 @@ fn public_directory_excludes_joined_servers() {
 }
 
 #[test]
+fn boost_perks_scale_with_level_and_reach_summary() {
+    assert_eq!(upload_limit_bytes(0), 48 * 1024 * 1024);
+    assert_eq!(upload_limit_bytes(1), 64 * 1024 * 1024);
+    assert_eq!(upload_limit_bytes(2), 96 * 1024 * 1024);
+    assert_eq!(upload_limit_bytes(3), 128 * 1024 * 1024);
+    assert_eq!(upload_limit_bytes(9), 128 * 1024 * 1024);
+
+    assert_eq!(voice_bitrate_kbps(0), 64);
+    assert_eq!(voice_bitrate_kbps(1), 128);
+    assert_eq!(voice_bitrate_kbps(2), 256);
+    assert_eq!(voice_bitrate_kbps(3), 384);
+    assert_eq!(voice_bitrate_kbps(9), 384);
+
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    for id in 1..=3 {
+        conn.execute(
+            "INSERT INTO users(id, username, display_name, pass_hash, created_at) VALUES(?1,?2,?2,'x',1)",
+            params![id, format!("user{id}")],
+        )
+        .unwrap();
+    }
+    conn.execute(
+        "INSERT INTO guilds(id, name, icon_color, owner_id, description, created_at, everyone_role_id) VALUES(1,'Guild',0,1,'',1,10)",
+        [],
+    )
+    .unwrap();
+    for id in 1..=3 {
+        conn.execute(
+            "INSERT INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(1,?1,'',1)",
+            params![id],
+        )
+        .unwrap();
+    }
+
+    let (summary, _) = guild_summary_with_unread(&conn, 1, 1).expect("summary");
+    assert_eq!(summary.boosts, 0);
+    assert_eq!(summary.upload_limit_bytes, 48 * 1024 * 1024);
+    assert_eq!(summary.voice_kbps, 64);
+
+    boost_guild(&conn, 1, 1);
+    boost_guild(&conn, 1, 2);
+    let (summary, _) = guild_summary_with_unread(&conn, 1, 1).expect("summary");
+    assert_eq!(summary.boost_level, 1);
+    assert_eq!(summary.upload_limit_bytes, 64 * 1024 * 1024);
+    assert_eq!(summary.voice_kbps, 128);
+}
+
+#[test]
 fn boosts_persist_and_raise_levels() {
     let conn = Connection::open_in_memory().expect("memory db");
     migrate(&conn).expect("migrate");

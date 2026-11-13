@@ -7,6 +7,26 @@ pub const LEVEL_ONE: u32 = 2;
 pub const LEVEL_TWO: u32 = 7;
 pub const LEVEL_THREE: u32 = 14;
 
+/// Upload cap in bytes for a boost level: 48/64/96/128 MB.
+pub fn upload_limit_bytes(level: u32) -> u64 {
+    match level {
+        0 => 48 * 1024 * 1024,
+        1 => 64 * 1024 * 1024,
+        2 => 96 * 1024 * 1024,
+        _ => 128 * 1024 * 1024,
+    }
+}
+
+/// Opus bitrate for a boost level: 64/128/256/384 kbps.
+pub fn voice_bitrate_kbps(level: u32) -> u32 {
+    match level {
+        0 => 64,
+        1 => 128,
+        2 => 256,
+        _ => 384,
+    }
+}
+
 pub fn boost_level(boosts: u32) -> u32 {
     if boosts >= LEVEL_THREE {
         3

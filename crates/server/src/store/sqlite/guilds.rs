@@ -38,6 +38,8 @@ pub fn guild_summary_with_unread(
     summary.boosts = boost_count(conn, guild_id);
     summary.boost_level = boost_level(summary.boosts);
     summary.boosted_by_me = boosted_by(conn, guild_id, me);
+    summary.upload_limit_bytes = upload_limit_bytes(summary.boost_level);
+    summary.voice_kbps = voice_bitrate_kbps(summary.boost_level);
     summary.member_count = conn
         .query_row(
             "SELECT COUNT(*) FROM guild_members WHERE guild_id=?1",
