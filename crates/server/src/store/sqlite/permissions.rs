@@ -179,7 +179,9 @@ pub fn unread_mentions_for(
     channel_id: Id,
     me: Id,
     suppress_everyone: bool,
+    suppress_roles: bool,
 ) -> u32 {
+    use rusqlite::types::Value;
     let last: Option<Id> = conn
         .query_row(
             "SELECT last_read_id FROM reads WHERE user_id=?1 AND channel_id=?2",
@@ -190,23 +192,41 @@ pub fn unread_mentions_for(
         .ok()
         .flatten();
     let after = last.unwrap_or(0);
-    let needle = format!("%<@{me}>%");
-    if suppress_everyone {
-        return conn
-            .query_row(
-                "SELECT COUNT(*) FROM messages WHERE channel_id=?1 AND id>?2 AND author_id<>?3
-                 AND content LIKE ?4",
-                params![channel_id, after, me, needle],
-                |r| r.get::<_, i64>(0),
-            )
-            .unwrap_or(0) as u32;
+    let mut query = String::from(
+        "SELECT COUNT(*) FROM messages WHERE channel_id=?1 AND id>?2 AND author_id<>?3",
+    );
+    let mut clauses = vec!["content LIKE ?4".to_string()];
+    let mut values: Vec<Value> = vec![
+        Value::Integer(channel_id),
+        Value::Integer(after),
+        Value::Integer(me),
+        Value::Text(format!("%<@{me}>%")),
+    ];
+    if !suppress_everyone {
+        clauses.push("content LIKE '%@everyone%'".into());
+        clauses.push("content LIKE '%@here%'".into());
     }
-    conn.query_row(
-        "SELECT COUNT(*) FROM messages WHERE channel_id=?1 AND id>?2 AND author_id<>?3
-         AND (content LIKE ?4 OR content LIKE '%@everyone%' OR content LIKE '%@here%')",
-        params![channel_id, after, me, needle],
-        |r| r.get::<_, i64>(0),
-    )
+    if !suppress_roles {
+        let guild: Option<Id> = conn
+            .query_row(
+                "SELECT guild_id FROM channels WHERE id=?1",
+                params![channel_id],
+                |r| r.get(0),
+            )
+            .optional()
+            .ok()
+            .flatten();
+        if let Some(guild) = guild {
+            for role in member_role_ids(conn, guild, me) {
+                clauses.push("content LIKE ?".into());
+                values.push(Value::Text(format!("%<@&{role}>%")));
+            }
+        }
+    }
+    query.push_str(&format!(" AND ({})", clauses.join(" OR ")));
+    conn.query_row(&query, rusqlite::params_from_iter(values), |r| {
+        r.get::<_, i64>(0)
+    })
     .unwrap_or(0) as u32
 }
 

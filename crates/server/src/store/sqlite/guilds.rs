@@ -57,19 +57,33 @@ pub fn guild_summary_with_unread(
 
 pub(crate) fn guild_unread_channels(conn: &Connection, guild_id: Id, me: Id) -> BTreeMap<Id, u32> {
     let mut out = BTreeMap::new();
+    let settings = guild_notification_settings(conn, me, guild_id);
     if let Ok(mut stmt) = conn.prepare(
         "SELECT id FROM channels WHERE guild_id=?1 AND kind IN ('text','announcement','forum','thread')",
     ) {
         if let Ok(rows) = stmt.query_map(params![guild_id], |r| r.get::<_, Id>(0)) {
             for channel in rows.flatten() {
                 if can_view(conn, channel, me) {
-                    let level = channel_notification(conn, me, channel);
+                    let level = channel_notification_override(conn, me, channel).unwrap_or(
+                        if settings.muted {
+                            NotificationLevel::Mentions
+                        } else {
+                            settings.level
+                        },
+                    );
                     if level == NotificationLevel::None {
                         continue;
                     }
                     let count = if level == NotificationLevel::Mentions {
-                        let suppress = channel_suppressed(conn, me, channel);
-                        unread_mentions_for(conn, channel, me, suppress)
+                        let suppress = channel_suppressed(conn, me, channel)
+                            || settings.suppress_everyone;
+                        unread_mentions_for(
+                            conn,
+                            channel,
+                            me,
+                            suppress,
+                            settings.suppress_roles,
+                        )
                     } else {
                         unread_for(conn, channel, me)
                     };

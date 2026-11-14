@@ -119,6 +119,7 @@ pub fn bootstrap(conn: &Connection, me: Id) -> Bootstrap {
         voice_states: Vec::new(),
         channel_notifications: channel_notifications_for(conn, me),
         channel_suppress: channel_suppress_for(conn, me).into_keys().collect(),
+        guild_notifications: guild_notifications_for(conn, me),
     }
 }
 

@@ -449,6 +449,74 @@ pub(crate) async fn my_permissions(
 const ICON_LIMIT: usize = 4 * 1024 * 1024;
 const BANNER_LIMIT: usize = 10 * 1024 * 1024;
 
+#[derive(Deserialize)]
+pub(crate) struct GuildNotifyBody {
+    #[serde(default)]
+    level: Option<NotificationLevel>,
+    #[serde(default)]
+    muted: Option<bool>,
+    #[serde(default)]
+    suppress_everyone: Option<bool>,
+    #[serde(default)]
+    suppress_roles: Option<bool>,
+    #[serde(default)]
+    suppress_highlights: Option<bool>,
+    #[serde(default)]
+    mute_new_events: Option<bool>,
+    #[serde(default)]
+    mobile_push: Option<bool>,
+}
+
+pub(crate) async fn guild_notifications(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild): Path<Id>,
+) -> Result<Json<GuildNotificationSettings>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    if !store::guild_member(&conn, guild, me) {
+        return Err(not_found());
+    }
+    Ok(Json(store::guild_notification_settings(&conn, me, guild)))
+}
+
+pub(crate) async fn update_guild_notifications(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(guild): Path<Id>,
+    Json(body): Json<GuildNotifyBody>,
+) -> Result<Json<GuildNotificationSettings>, ApiError> {
+    let me = auth_user(&state, &headers)?;
+    let conn = state.store.conn();
+    if !store::guild_member(&conn, guild, me) {
+        return Err(not_found());
+    }
+    let mut settings = store::guild_notification_settings(&conn, me, guild);
+    if let Some(level) = body.level {
+        settings.level = level;
+    }
+    if let Some(value) = body.muted {
+        settings.muted = value;
+    }
+    if let Some(value) = body.suppress_everyone {
+        settings.suppress_everyone = value;
+    }
+    if let Some(value) = body.suppress_roles {
+        settings.suppress_roles = value;
+    }
+    if let Some(value) = body.suppress_highlights {
+        settings.suppress_highlights = value;
+    }
+    if let Some(value) = body.mute_new_events {
+        settings.mute_new_events = value;
+    }
+    if let Some(value) = body.mobile_push {
+        settings.mobile_push = value;
+    }
+    store::set_guild_notification_settings(&conn, me, guild, &settings);
+    Ok(Json(settings))
+}
+
 pub(crate) async fn upload_guild_icon(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,

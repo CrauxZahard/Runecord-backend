@@ -648,6 +648,8 @@ struct NotificationBody {
     level: NotificationLevel,
     #[serde(default)]
     suppress_everyone: bool,
+    #[serde(default)]
+    clear: bool,
 }
 
 async fn set_channel_notification(
@@ -661,8 +663,12 @@ async fn set_channel_notification(
     if !store::can_view(&conn, channel, me) {
         return Err(forbidden());
     }
-    store::set_channel_notification(&conn, me, channel, body.level, body.suppress_everyone);
-    Ok(Json(json!({ "level": body.level })))
+    if body.clear {
+        store::clear_channel_notification(&conn, me, channel);
+    } else {
+        store::set_channel_notification(&conn, me, channel, body.level, body.suppress_everyone);
+    }
+    Ok(Json(json!({ "level": body.level, "clear": body.clear })))
 }
 
 #[derive(Deserialize)]

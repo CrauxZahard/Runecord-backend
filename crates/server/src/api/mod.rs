@@ -208,6 +208,10 @@ pub fn router(state: Arc<AppState>) -> Router {
             post(boost_guild).delete(unboost_guild),
         )
         .route(
+            "/api/guilds/{id}/notifications",
+            get(guild_notifications).patch(update_guild_notifications),
+        )
+        .route(
             "/api/guilds/{id}/icon",
             post(upload_guild_icon).delete(remove_guild_icon),
         )

@@ -505,6 +505,24 @@ pub enum NotificationLevel {
     None,
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GuildNotificationSettings {
+    #[serde(default)]
+    pub level: NotificationLevel,
+    #[serde(default)]
+    pub muted: bool,
+    #[serde(default)]
+    pub suppress_everyone: bool,
+    #[serde(default)]
+    pub suppress_roles: bool,
+    #[serde(default)]
+    pub suppress_highlights: bool,
+    #[serde(default)]
+    pub mute_new_events: bool,
+    #[serde(default)]
+    pub mobile_push: bool,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Bootstrap {
     pub user: User,
@@ -521,6 +539,8 @@ pub struct Bootstrap {
     pub channel_notifications: BTreeMap<Id, NotificationLevel>,
     #[serde(default)]
     pub channel_suppress: std::collections::BTreeSet<Id>,
+    #[serde(default)]
+    pub guild_notifications: std::collections::BTreeMap<Id, GuildNotificationSettings>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

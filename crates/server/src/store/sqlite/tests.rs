@@ -857,8 +857,8 @@ fn suppress_everyone_hides_broadcast_mentions() {
     )
     .unwrap();
     set_channel_notification(&conn, 1, 10, NotificationLevel::Mentions, false);
-    assert_eq!(unread_mentions_for(&conn, 10, 1, false), 1);
-    assert_eq!(unread_mentions_for(&conn, 10, 1, true), 0);
+    assert_eq!(unread_mentions_for(&conn, 10, 1, false, false), 1);
+    assert_eq!(unread_mentions_for(&conn, 10, 1, true, false), 0);
     set_channel_notification(&conn, 1, 10, NotificationLevel::Mentions, true);
     assert!(channel_suppressed(&conn, 1, 10));
     assert_eq!(guild_unread_channels(&conn, 1, 1).get(&10).copied(), None);
@@ -870,6 +870,128 @@ fn suppress_everyone_hides_broadcast_mentions() {
     assert_eq!(
         guild_unread_channels(&conn, 1, 1).get(&10).copied(),
         Some(1)
+    );
+}
+
+#[test]
+fn guild_notification_defaults_mute_suppression_and_overrides() {
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    for id in 1..=2 {
+        conn.execute(
+            "INSERT INTO users(id, username, display_name, pass_hash, created_at) VALUES(?1,?2,?2,'x',1)",
+            params![id, format!("user{id}")],
+        )
+        .unwrap();
+    }
+    conn.execute(
+        "INSERT INTO guilds(id, name, icon_color, owner_id, description, created_at, everyone_role_id) VALUES(1,'Guild',0,2,'',1,10)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO roles(id, guild_id, name, color, permissions, position, hoist, mentionable) VALUES(10,1,'@everyone',0,?1,0,0,0)",
+        params![perm::EVERYONE as i64],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO roles(id, guild_id, name, color, permissions, position, hoist, mentionable) VALUES(11,1,'Team',0,0,1,1,1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(1,1,'',1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(1,2,'',1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO member_roles(guild_id, user_id, role_id) VALUES(1,1,11)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO channels(id, guild_id, name, kind, topic) VALUES(10,1,'general','text','')",
+        [],
+    )
+    .unwrap();
+    for (id, content) in [
+        (100, "plain"),
+        (101, "@everyone hello"),
+        (102, "<@&11> role ping"),
+        (103, "<@1> direct"),
+    ] {
+        conn.execute(
+            "INSERT INTO messages(id, channel_id, author_id, content, timestamp) VALUES(?1,10,2,?2,?1)",
+            params![id, content],
+        )
+        .unwrap();
+    }
+
+    assert_eq!(
+        guild_unread_channels(&conn, 1, 1).get(&10).copied(),
+        Some(4)
+    );
+
+    let mut settings = GuildNotificationSettings {
+        level: NotificationLevel::Mentions,
+        ..GuildNotificationSettings::default()
+    };
+    set_guild_notification_settings(&conn, 1, 1, &settings);
+    assert_eq!(
+        guild_unread_channels(&conn, 1, 1).get(&10).copied(),
+        Some(3)
+    );
+
+    settings.suppress_everyone = true;
+    set_guild_notification_settings(&conn, 1, 1, &settings);
+    assert_eq!(
+        guild_unread_channels(&conn, 1, 1).get(&10).copied(),
+        Some(2)
+    );
+
+    settings.suppress_roles = true;
+    set_guild_notification_settings(&conn, 1, 1, &settings);
+    assert_eq!(
+        guild_unread_channels(&conn, 1, 1).get(&10).copied(),
+        Some(1)
+    );
+
+    settings.muted = true;
+    settings.suppress_roles = false;
+    settings.suppress_everyone = false;
+    settings.level = NotificationLevel::All;
+    set_guild_notification_settings(&conn, 1, 1, &settings);
+    assert_eq!(
+        guild_unread_channels(&conn, 1, 1).get(&10).copied(),
+        Some(3)
+    );
+
+    settings.level = NotificationLevel::None;
+    settings.muted = false;
+    settings.mute_new_events = true;
+    settings.mobile_push = true;
+    set_guild_notification_settings(&conn, 1, 1, &settings);
+    assert!(guild_unread_channels(&conn, 1, 1).is_empty());
+
+    set_channel_notification(&conn, 1, 10, NotificationLevel::All, false);
+    assert_eq!(
+        guild_unread_channels(&conn, 1, 1).get(&10).copied(),
+        Some(4)
+    );
+
+    set_channel_notification(&conn, 1, 10, NotificationLevel::None, false);
+    assert!(guild_unread_channels(&conn, 1, 1).is_empty());
+    assert_eq!(
+        guild_notifications_for(&conn, 1)
+            .get(&1)
+            .cloned()
+            .unwrap_or_default(),
+        settings
     );
 }
 
