@@ -131,12 +131,13 @@ pub(crate) async fn update_channel(
         return Err(bad("Name the channel."));
     }
     conn.execute(
-        "UPDATE channels SET name=?1, topic=?2, slowmode=?3, nsfw=?4 WHERE id=?5",
+        "UPDATE channels SET name=?1, topic=?2, slowmode=?3, nsfw=?4, status=?5 WHERE id=?6",
         params![
             body.name.trim().to_lowercase().replace(' ', "-"),
             body.topic,
             body.slowmode as i64,
             body.nsfw as i64,
+            body.status.trim().chars().take(128).collect::<String>(),
             id
         ],
     )

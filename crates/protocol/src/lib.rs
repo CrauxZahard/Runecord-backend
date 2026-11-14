@@ -191,6 +191,8 @@ pub struct Channel {
     pub position: i32,
     pub parent_id: Option<Id>,
     pub topic: String,
+    #[serde(default)]
+    pub status: String,
     pub nsfw: bool,
     pub slowmode: u32,
     pub last_message_id: Option<Id>,
@@ -734,6 +736,8 @@ pub struct CreateChannel {
     pub kind: ChannelKind,
     pub parent_id: Option<Id>,
     pub topic: String,
+    #[serde(default)]
+    pub status: String,
     #[serde(default)]
     pub slowmode: u32,
     #[serde(default)]

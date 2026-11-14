@@ -146,6 +146,7 @@ pub fn channel_from_row(r: &Row<'_>) -> rusqlite::Result<Channel> {
         position: r.get::<_, i64>("position")? as i32,
         parent_id: r.get("parent_id")?,
         topic: r.get("topic")?,
+        status: r.get("status").unwrap_or_default(),
         nsfw: r.get::<_, i64>("nsfw")? != 0,
         slowmode: r.get::<_, i64>("slowmode")? as u32,
         last_message_id: r.get("last_message_id")?,

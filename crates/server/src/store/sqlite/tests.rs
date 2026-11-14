@@ -779,6 +779,25 @@ fn moderation_kick_ban_timeout_and_hierarchy() {
 }
 
 #[test]
+fn voice_channel_status_round_trips() {
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    conn.execute(
+        "INSERT INTO guilds(id, name, icon_color, owner_id, description, created_at, everyone_role_id) VALUES(1,'Guild',0,1,'',1,10)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO channels(id, guild_id, name, kind, topic, status) VALUES(10,1,'general','voice','','Design critique at 4')",
+        [],
+    )
+    .unwrap();
+    let channel = channel_by_id(&conn, 10).expect("channel");
+    assert_eq!(channel.status, "Design critique at 4");
+    assert_eq!(channel.kind, ChannelKind::Voice);
+}
+
+#[test]
 fn profile_activity_and_connections_round_trip() {
     let conn = Connection::open_in_memory().expect("memory db");
     migrate(&conn).expect("migrate");
