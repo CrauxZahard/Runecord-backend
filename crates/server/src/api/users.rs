@@ -16,7 +16,7 @@ pub(crate) async fn bootstrap(
     headers: HeaderMap,
 ) -> Result<Json<Bootstrap>, ApiError> {
     let me = auth_user(&state, &headers)?;
-    let mut out = crate::store::Store::bootstrap(&state.store, me);
+    let mut out = state.store.bootstrap(me);
     out.voice_states = state
         .voice
         .lock()
@@ -429,15 +429,11 @@ pub(crate) async fn upload_activity_artwork(
     if width > 4096 {
         return Err(bad("Activity artwork must be 4096 pixels or smaller."));
     }
-    let hash = store::hash_bytes(&body);
-    let stored = format!("{hash}.{ext}");
-    let dir = state.data_dir.join("cdn");
-    std::fs::create_dir_all(&dir).map_err(internal)?;
-    if !dir.join(&stored).exists() {
-        let sealed = crate::crypto::seal(&state.store.key(), &body);
-        std::fs::write(dir.join(&stored), sealed).map_err(internal)?;
-    }
-    let url = format!("/cdn/{stored}");
+    let url = state
+        .media
+        .save_with_ext(&body, ext)
+        .map_err(internal)?
+        .url;
     conn.execute(
         "UPDATE users SET activity_artwork_url=?1 WHERE id=?2",
         params![url, me],
@@ -542,15 +538,11 @@ async fn set_my_image(
     if banner && width < height {
         return Err(bad("Your banner should be landscape, ideally 16:9."));
     }
-    let hash = store::hash_bytes(&body);
-    let stored = format!("{hash}.{ext}");
-    let dir = state.data_dir.join("cdn");
-    std::fs::create_dir_all(&dir).map_err(internal)?;
-    if !dir.join(&stored).exists() {
-        let sealed = crate::crypto::seal(&state.store.key(), &body);
-        std::fs::write(dir.join(&stored), sealed).map_err(internal)?;
-    }
-    let url = format!("/cdn/{stored}");
+    let url = state
+        .media
+        .save_with_ext(&body, ext)
+        .map_err(internal)?
+        .url;
     let column = if banner { "banner_url" } else { "avatar_url" };
     let conn = state.store.conn();
     conn.execute(

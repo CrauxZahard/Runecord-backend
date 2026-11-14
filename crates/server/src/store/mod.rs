@@ -15,14 +15,14 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
-pub struct SqliteStore {
+pub struct Database {
     conn: Mutex<Connection>,
     key: [u8; 32],
     path: PathBuf,
     flushed_changes: AtomicI64,
 }
 
-impl SqliteStore {
+impl Database {
     pub fn open(path: &std::path::Path, key: [u8; 32]) -> rusqlite::Result<Self> {
         let mut conn = Connection::open_in_memory()?;
         if let Ok(encrypted) = std::fs::read(path) {
@@ -133,29 +133,4 @@ impl SqliteStore {
     }
 }
 
-/// The storage contract a Postgres adapter will implement later.
-#[allow(dead_code)]
-pub trait Store: Send + Sync {
-    fn session_user(&self, token: &str) -> Option<Id>;
-    fn bootstrap(&self, me: Id) -> Bootstrap;
-    fn user_by_id(&self, id: Id) -> Option<User>;
-    fn user_by_name(&self, username: &str) -> Option<User>;
-}
 
-impl Store for SqliteStore {
-    fn session_user(&self, token: &str) -> Option<Id> {
-        SqliteStore::session_user(self, token)
-    }
-
-    fn bootstrap(&self, me: Id) -> Bootstrap {
-        SqliteStore::bootstrap(self, me)
-    }
-
-    fn user_by_id(&self, id: Id) -> Option<User> {
-        SqliteStore::user_by_id(self, id)
-    }
-
-    fn user_by_name(&self, username: &str) -> Option<User> {
-        SqliteStore::user_by_name(self, username)
-    }
-}

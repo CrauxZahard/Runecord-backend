@@ -191,15 +191,11 @@ pub(crate) async fn upload_role_icon(
     if width > 4096 {
         return Err(bad("Role icons must be 4096 pixels or smaller."));
     }
-    let hash = store::hash_bytes(&body);
-    let stored = format!("{hash}.{ext}");
-    let dir = state.data_dir.join("cdn");
-    std::fs::create_dir_all(&dir).map_err(internal)?;
-    if !dir.join(&stored).exists() {
-        let sealed = crate::crypto::seal(&state.store.key(), &body);
-        std::fs::write(dir.join(&stored), sealed).map_err(internal)?;
-    }
-    let url = format!("/cdn/{stored}");
+    let url = state
+        .media
+        .save_with_ext(&body, ext)
+        .map_err(internal)?
+        .url;
     conn.execute(
         "UPDATE roles SET icon_url=?1 WHERE id=?2 AND guild_id=?3",
         params![url, role, guild],

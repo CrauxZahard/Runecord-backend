@@ -606,15 +606,11 @@ async fn set_guild_image(
     if !icon && width < height {
         return Err(bad("The banner should be landscape, ideally 16:9."));
     }
-    let hash = store::hash_bytes(&body);
-    let stored = format!("{hash}.{ext}");
-    let dir = state.data_dir.join("cdn");
-    std::fs::create_dir_all(&dir).map_err(internal)?;
-    if !dir.join(&stored).exists() {
-        let sealed = crate::crypto::seal(&state.store.key(), &body);
-        std::fs::write(dir.join(&stored), sealed).map_err(internal)?;
-    }
-    let url = format!("/cdn/{stored}");
+    let url = state
+        .media
+        .save_with_ext(&body, ext)
+        .map_err(internal)?
+        .url;
     let column = if icon { "icon_url" } else { "banner_url" };
     conn.execute(
         &format!("UPDATE guilds SET {column}=?1 WHERE id=?2"),

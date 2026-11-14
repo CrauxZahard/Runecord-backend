@@ -324,15 +324,11 @@ async fn set_dm_icon(
     if width > 4096 {
         return Err(bad("Group icons must be 4096 pixels or smaller."));
     }
-    let hash = store::hash_bytes(&body);
-    let stored = format!("{hash}.{ext}");
-    let dir = state.data_dir.join("cdn");
-    std::fs::create_dir_all(&dir).map_err(internal)?;
-    if !dir.join(&stored).exists() {
-        let sealed = crate::crypto::seal(&state.store.key(), &body);
-        std::fs::write(dir.join(&stored), sealed).map_err(internal)?;
-    }
-    let url = format!("/cdn/{stored}");
+    let url = state
+        .media
+        .save_with_ext(&body, ext)
+        .map_err(internal)?
+        .url;
     let payload = {
         let conn = state.store.conn();
         store::dm_set_icon(&conn, dm, &url);

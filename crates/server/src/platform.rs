@@ -73,32 +73,6 @@ fn internal(msg: impl std::fmt::Display) -> ApiError {
     ApiError(StatusCode::INTERNAL_SERVER_ERROR, msg.to_string())
 }
 
-fn save_cdn(
-    state: &AppState,
-    bytes: &[u8],
-    filename: &str,
-    content_type: &str,
-) -> Result<String, ApiError> {
-    let hash = store::hash_bytes(bytes);
-    let ext = filename.rsplit('.').next().unwrap_or("bin").to_lowercase();
-    let stored = format!("{hash}.{ext}");
-    let dir = state.data_dir.join("cdn");
-    std::fs::create_dir_all(&dir).map_err(internal)?;
-    let path = dir.join(&stored);
-    if !path.exists() {
-        let sealed = crate::crypto::seal(&state.store.key(), bytes);
-        std::fs::write(&path, sealed).map_err(internal)?;
-    }
-    store::record_cdn(
-        &state.store.conn(),
-        &hash,
-        filename,
-        content_type,
-        bytes.len() as u64,
-    );
-    Ok(format!("/cdn/{stored}"))
-}
-
 // ---------------------------------------------------------------------------
 // Applications
 // ---------------------------------------------------------------------------
@@ -726,8 +700,19 @@ async fn create_emoji(
         return Err(bad("Emoji names are 2+ letters, numbers or underscores."));
     }
     let (ext, content_type) = emoji_media(&bytes);
-    let url = save_cdn(&state, &bytes, &format!("{name}.{ext}"), content_type)?;
+    let asset = state
+        .media
+        .save(&bytes, &format!("{name}.{ext}"))
+        .map_err(internal)?;
+    let url = asset.url.clone();
     let conn = state.store.conn();
+    store::record_cdn(
+        &conn,
+        &asset.hash,
+        &format!("{name}.{ext}"),
+        content_type,
+        asset.size,
+    );
     let emoji = store::create_emoji(&conn, guild, me, &name, q.sticker, &url);
     store::record_audit(
         &conn,

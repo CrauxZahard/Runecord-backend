@@ -45,15 +45,12 @@ pub(crate) async fn upload(
         clean
     };
     let ext = filename.rsplit('.').next().unwrap_or("bin").to_lowercase();
-    let hash = store::hash_bytes(&body);
-    let stored = format!("{hash}.{ext}");
-    let dir = state.data_dir.join("cdn");
-    std::fs::create_dir_all(&dir).map_err(internal)?;
-    if !dir.join(&stored).exists() {
-        let sealed = crate::crypto::seal(&state.store.key(), &body);
-        std::fs::write(dir.join(&stored), sealed).map_err(internal)?;
-    }
-    let url = format!("/cdn/{stored}");
+    let asset = state
+        .media
+        .save_with_ext(&body, &ext)
+        .map_err(internal)?;
+    let url = asset.url.clone();
+    let hash = asset.hash.clone();
     let conn = state.store.conn();
     store::record_cdn(&conn, &hash, &filename, &q.content_type, body.len() as u64);
     let id = store::next_id(&conn);
@@ -101,12 +98,8 @@ pub(crate) async fn cdn_file(
         )
         .unwrap_or_else(|_| "application/octet-stream".to_string())
     };
-    let path = state.data_dir.join("cdn").join(&file);
-    let Ok(sealed) = std::fs::read(path) else {
+    let Some(bytes) = state.media.read(&file) else {
         return (StatusCode::NOT_FOUND, "not found").into_response();
-    };
-    let Some(bytes) = crate::crypto::open(&state.store.key(), &sealed) else {
-        return (StatusCode::INTERNAL_SERVER_ERROR, "could not decrypt").into_response();
     };
 
     if let Some(width) = query.w.filter(|w| (64..=2048).contains(w)) {
@@ -120,20 +113,14 @@ pub(crate) async fn cdn_file(
             {
                 return image_response(hit);
             }
-            let thumb_path = state
-                .data_dir
-                .join("thumbs")
-                .join(format!("{hash}-{width}.enc"));
-            if let Ok(sealed) = std::fs::read(&thumb_path) {
-                if let Some(thumb) = crate::crypto::open(&state.store.key(), &sealed) {
-                    let thumb = Bytes::from(thumb);
-                    state
-                        .thumb_cache
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .put(key, thumb.clone());
-                    return image_response(thumb);
-                }
+            if let Some(thumb) = state.media.read_thumb(&hash, width) {
+                let thumb = Bytes::from(thumb);
+                state
+                    .thumb_cache
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .put(key, thumb.clone());
+                return image_response(thumb);
             }
             if let Ok(image) = image::load_from_memory(&bytes) {
                 let (w, h) = (image.width(), image.height());
@@ -145,13 +132,7 @@ pub(crate) async fn cdn_file(
                         .write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
                         .is_ok()
                     {
-                        if let Some(dir) = thumb_path.parent() {
-                            let _ = std::fs::create_dir_all(dir);
-                        }
-                        let _ = std::fs::write(
-                            &thumb_path,
-                            crate::crypto::seal(&state.store.key(), &out),
-                        );
+                        let _ = state.media.write_thumb(&hash, width, &out);
                         let thumb = Bytes::from(out);
                         state
                             .thumb_cache
