@@ -256,6 +256,18 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/api/guilds/{id}/roles/{role_id}",
             patch(update_role).delete(delete_role),
         )
+        .route(
+            "/api/guilds/{id}/roles/{role_id}/icon",
+            post(upload_role_icon).delete(remove_role_icon),
+        )
+        .route(
+            "/api/guilds/{id}/roles/{role_id}/links",
+            get(role_links_list).post(create_role_link),
+        )
+        .route(
+            "/api/guilds/{id}/roles/{role_id}/links/{link}",
+            delete(delete_role_link),
+        )
         .route("/api/guilds/{id}/invites", post(create_invite))
         .route("/api/invites/{code}", get(invite_info))
         .route("/api/invites/{code}/join", post(join_invite))

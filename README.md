@@ -16,7 +16,7 @@ crates/server/src/api
   channels.rs        channels, overwrites, threads
   messages.rs        messages, reactions, pins, search
   media.rs           uploads and the CDN/thumbnail path
-  roles.rs           role CRUD
+  roles.rs           role CRUD, icons and links
   invites.rs         invite create/info/join
   social.rs          friends and DMs
   bots.rs            bot account CRUD

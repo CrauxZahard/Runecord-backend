@@ -83,6 +83,14 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0020_guild_notify_events",
         include_str!("../../../../../migrations/0020_guild_notify_events.sql"),
     ),
+    (
+        "0021_role_icons",
+        include_str!("../../../../../migrations/0021_role_icons.sql"),
+    ),
+    (
+        "0022_role_links",
+        include_str!("../../../../../migrations/0022_role_links.sql"),
+    ),
 ];
 
 /// Applies numbered migrations once each and returns the connection.

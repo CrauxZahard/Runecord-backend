@@ -304,6 +304,23 @@ pub struct Role {
     pub position: i32,
     pub hoist: bool,
     pub mentionable: bool,
+    #[serde(default)]
+    pub icon_url: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RoleLink {
+    pub id: Id,
+    pub guild_id: Id,
+    pub role_id: Id,
+    pub label: String,
+    pub url: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateRoleLink {
+    pub label: String,
+    pub url: String,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

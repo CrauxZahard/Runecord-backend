@@ -179,6 +179,7 @@ pub fn role_from_row(r: &Row<'_>) -> rusqlite::Result<Role> {
         position: r.get::<_, i64>("position")? as i32,
         hoist: r.get::<_, i64>("hoist")? != 0,
         mentionable: r.get::<_, i64>("mentionable")? != 0,
+        icon_url: r.get("icon_url").unwrap_or_default(),
     })
 }
 

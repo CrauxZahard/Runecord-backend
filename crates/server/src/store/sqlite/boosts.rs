@@ -44,6 +44,11 @@ pub fn banner_unlocked(level: u32) -> bool {
     level >= 2
 }
 
+/// Role icons unlock at Boost Level 2 (7 Boosts), like server banners.
+pub fn role_icon_unlocked(level: u32) -> bool {
+    level >= 2
+}
+
 pub fn boost_guild(conn: &Connection, guild: Id, user: Id) -> bool {
     conn.execute(
         "INSERT OR IGNORE INTO guild_boosts(guild_id, user_id, created_at) VALUES(?1,?2,?3)",

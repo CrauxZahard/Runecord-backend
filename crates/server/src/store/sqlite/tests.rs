@@ -779,6 +779,58 @@ fn moderation_kick_ban_timeout_and_hierarchy() {
 }
 
 #[test]
+fn role_icons_are_gated_and_role_links_round_trip() {
+    use super::{role_from_row, role_icon_unlocked};
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    conn.execute(
+        "INSERT INTO guilds(id, name, icon_color, owner_id, description, created_at, everyone_role_id) VALUES(1,'Guild',0,1,'',1,1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO roles(id, guild_id, name, color, permissions, position, hoist, mentionable) VALUES(5,1,'Designer',0,0,1,1,1)",
+        [],
+    )
+    .unwrap();
+
+    assert!(!role_icon_unlocked(0));
+    assert!(!role_icon_unlocked(1));
+    assert!(role_icon_unlocked(2));
+    assert!(role_icon_unlocked(3));
+
+    conn.execute("UPDATE roles SET icon_url='/cdn/role.png' WHERE id=5", [])
+        .unwrap();
+    let role = conn
+        .query_row("SELECT * FROM roles WHERE id=5", [], role_from_row)
+        .unwrap();
+    assert_eq!(role.icon_url, "/cdn/role.png");
+
+    conn.execute(
+        "INSERT INTO role_links(id, guild_id, role_id, label, url, created_at) VALUES(1,1,5,'Design','https://example.com',1)",
+        [],
+    )
+    .unwrap();
+    let (label, url): (String, String) = conn
+        .query_row(
+            "SELECT label, url FROM role_links WHERE role_id=5",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(label, "Design");
+    assert_eq!(url, "https://example.com");
+    conn.execute("DELETE FROM role_links WHERE role_id=5", [])
+        .unwrap();
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM role_links WHERE role_id=5", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(count, 0);
+}
+
+#[test]
 fn muted_channels_hide_unread_and_mentions_only_counts_mentions() {
     let conn = Connection::open_in_memory().expect("memory db");
     migrate(&conn).expect("migrate");
