@@ -246,6 +246,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/guilds/{id}/appeals/{appeal}/deny", post(deny_appeal))
         .route("/api/invites/{code}/appeal", post(submit_appeal))
         .route("/api/guilds/{id}/roles", get(list_roles).post(create_role))
+        .route("/api/inbox", get(inbox::inbox))
         .route("/api/guilds/{id}/permissions", get(my_permissions))
         .route("/api/channels/{id}/permissions", get(channel_overwrites))
         .route(
@@ -319,6 +320,7 @@ mod bots;
 mod channels;
 mod gateway;
 mod guilds;
+mod inbox;
 mod invites;
 mod media;
 mod members;

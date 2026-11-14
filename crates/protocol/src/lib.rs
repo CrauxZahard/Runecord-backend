@@ -317,6 +317,27 @@ pub struct RoleLink {
     pub url: String,
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct InboxEntry {
+    pub channel_id: Id,
+    pub guild_id: Option<Id>,
+    pub message_id: Id,
+    pub guild_name: String,
+    pub channel_name: String,
+    pub author_id: Id,
+    pub author_name: String,
+    pub snippet: String,
+    pub timestamp: i64,
+    pub unread: u32,
+    pub mention: bool,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Inbox {
+    pub mentions: Vec<InboxEntry>,
+    pub unreads: Vec<InboxEntry>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CreateRoleLink {
     pub label: String,
