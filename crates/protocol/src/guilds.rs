@@ -1,8 +1,8 @@
 //! Guilds, roles, members and guild events.
 
+use super::*;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use super::*;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct GuildSummary {

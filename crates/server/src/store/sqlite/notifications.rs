@@ -131,6 +131,7 @@ pub fn channel_notification_override(
     .map(|value| level_from(&value))
 }
 
+#[cfg(test)]
 pub fn channel_notification(conn: &Connection, user: Id, channel: Id) -> NotificationLevel {
     conn.query_row(
         "SELECT level FROM channel_notifications WHERE user_id=?1 AND channel_id=?2",

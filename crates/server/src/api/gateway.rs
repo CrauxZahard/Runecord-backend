@@ -4,7 +4,6 @@ use super::*;
 use crate::{AppState, store};
 use axum::extract::State;
 use axum::http::HeaderMap;
-use rusqlite::{OptionalExtension, params};
 use std::sync::Arc;
 
 pub(crate) async fn gateway(
@@ -17,27 +16,7 @@ pub(crate) async fn gateway(
 }
 
 pub(crate) fn related_user(conn: &rusqlite::Connection, a: Id, b: Id) -> bool {
-    a == b
-        || conn
-            .query_row(
-                "SELECT 1 FROM guild_members x JOIN guild_members y ON x.guild_id=y.guild_id WHERE x.user_id=?1 AND y.user_id=?2 LIMIT 1",
-                params![a, b],
-                |_| Ok(()),
-            )
-            .optional()
-            .ok()
-            .flatten()
-            .is_some()
-        || conn
-            .query_row(
-                "SELECT 1 FROM relationships WHERE (user_id=?1 AND other_id=?2) OR (user_id=?2 AND other_id=?1) LIMIT 1",
-                params![a, b],
-                |_| Ok(()),
-            )
-            .optional()
-            .ok()
-            .flatten()
-            .is_some()
+    store::users_related(conn, a, b)
 }
 
 pub(crate) fn gateway_event_visible(state: &AppState, me: Id, event: &GatewayEvent) -> bool {
@@ -99,11 +78,7 @@ pub(crate) async fn gateway_loop(socket: WebSocket, state: Arc<AppState>, me: Id
     };
     if first {
         let conn = state.store.conn();
-        conn.execute(
-            "UPDATE users SET status='online' WHERE id=?1 AND status='offline'",
-            params![me],
-        )
-        .ok();
+        store::mark_online_if_offline(&conn, me);
         let _ = state.tx.send(GatewayEvent::PresenceUpdate {
             user_id: me,
             status: Presence::Online,
@@ -172,8 +147,7 @@ pub(crate) async fn gateway_loop(socket: WebSocket, state: Arc<AppState>, me: Id
             if *count == 0 {
                 online.remove(&me);
                 let conn = state.store.conn();
-                conn.execute("UPDATE users SET status='offline' WHERE id=?1", params![me])
-                    .ok();
+                store::mark_offline(&conn, me);
                 let _ = state.tx.send(GatewayEvent::PresenceUpdate {
                     user_id: me,
                     status: Presence::Offline,

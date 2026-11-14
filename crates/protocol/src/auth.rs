@@ -1,7 +1,7 @@
 //! Authentication request and response bodies.
 
-use serde::{Deserialize, Serialize};
 use super::*;
+use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
 // Requests

@@ -10,7 +10,6 @@ use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use axum::response::Response;
 use futures_util::{SinkExt, StreamExt};
 use runecord_protocol::*;
-use rusqlite::OptionalExtension as _;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::{HashMap, VecDeque};
@@ -386,28 +385,16 @@ fn auth_token(state: &AppState, raw: &str) -> Option<(Id, bool)> {
         }
         return Some((id, true));
     }
-    conn.query_row(
-        "SELECT user_id FROM sessions WHERE token=?1",
-        rusqlite::params![store::hash_bot_token(token)],
-        |r| r.get(0),
-    )
-    .optional()
-    .ok()
-    .flatten()
-    .map(|id| (id, false))
+    store::session_user(&conn, token).map(|id| (id, false))
 }
 
 fn ready_payload(state: &AppState, user_id: Id, session_id: &str) -> Value {
     let conn = state.store.conn();
     let user = store::user_by_id(&conn, user_id).unwrap_or_default();
-    let mut guilds = Vec::new();
-    if let Ok(mut stmt) = conn.prepare("SELECT guild_id FROM guild_members WHERE user_id=?1") {
-        if let Ok(rows) = stmt.query_map(rusqlite::params![user_id], |r| r.get::<_, Id>(0)) {
-            for id in rows.flatten() {
-                guilds.push(json!({ "id": id.to_string(), "unavailable": true }));
-            }
-        }
-    }
+    let guilds: Vec<Value> = store::guild_ids_for_user(&conn, user_id)
+        .into_iter()
+        .map(|id| json!({ "id": id.to_string(), "unavailable": true }))
+        .collect();
     json!({
         "v": 1,
         "user": user_json(&user),
@@ -427,11 +414,7 @@ async fn mark_online(state: &AppState, user: Id) {
     };
     if first {
         let conn = state.store.conn();
-        conn.execute(
-            "UPDATE users SET status='online' WHERE id=?1",
-            rusqlite::params![user],
-        )
-        .ok();
+        store::mark_online(&conn, user);
     }
     let _ = state.tx.send(GatewayEvent::PresenceUpdate {
         user_id: user,
@@ -456,11 +439,7 @@ async fn mark_offline(state: &AppState, user: Id) {
     };
     if last {
         let conn = state.store.conn();
-        conn.execute(
-            "UPDATE users SET status='offline' WHERE id=?1",
-            rusqlite::params![user],
-        )
-        .ok();
+        store::mark_offline(&conn, user);
         let _ = state.tx.send(GatewayEvent::PresenceUpdate {
             user_id: user,
             status: Presence::Offline,
@@ -698,15 +677,7 @@ fn dispatch(
 }
 
 fn member(conn: &rusqlite::Connection, guild: Id, user: Id) -> bool {
-    conn.query_row(
-        "SELECT 1 FROM guild_members WHERE guild_id=?1 AND user_id=?2",
-        rusqlite::params![guild, user],
-        |_| Ok(()),
-    )
-    .optional()
-    .ok()
-    .flatten()
-    .is_some()
+    store::guild_member(conn, guild, user)
 }
 
 fn visible(conn: &rusqlite::Connection, channel: Id, user: Id) -> bool {

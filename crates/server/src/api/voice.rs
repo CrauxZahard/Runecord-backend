@@ -23,15 +23,7 @@ pub(crate) async fn voice_socket(
     ws: WebSocketUpgrade,
 ) -> Result<Response, ApiError> {
     let conn = state.store.conn();
-    let me: Option<Id> = conn
-        .query_row(
-            "SELECT user_id FROM sessions WHERE token=?1",
-            params![store::hash_bot_token(query.token.trim())],
-            |r| r.get(0),
-        )
-        .optional()
-        .map_err(internal)?;
-    let me = me.ok_or_else(unauthorized)?;
+    let me = store::session_user(&conn, query.token.trim()).ok_or_else(unauthorized)?;
     if !store::can_view(&conn, query.channel, me) {
         return Err(forbidden());
     }

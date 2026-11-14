@@ -108,11 +108,7 @@ async fn create_app(
     let conn = state.store.conn();
     let mut app = store::create_application(&conn, me, name, body.color).map_err(bad)?;
     if !body.description.is_empty() {
-        conn.execute(
-            "UPDATE applications SET description=?1 WHERE id=?2",
-            rusqlite::params![body.description, app.id],
-        )
-        .ok();
+        store::set_application_description(&conn, app.id, &body.description);
         app.description = body.description;
     }
     let token = store::regenerate_bot_token(&conn, app.bot.id);
@@ -181,25 +177,12 @@ async fn install_app(
         return Err(forbidden());
     }
     let app = store::install_application(&conn, &code, body.guild_id).ok_or_else(not_found)?;
-    if body.permissions != 0 {
-        let role_id = store::next_id(&conn);
-        conn.execute("INSERT INTO roles(id, guild_id, name, color, permissions, position, hoist, mentionable) VALUES(?1,?2,?3,?4,?5,1,0,0)", rusqlite::params![role_id, body.guild_id, format!("{} bot", app.name), app.icon_color as i64, body.permissions as i64]).ok();
-        conn.execute(
-            "INSERT OR IGNORE INTO member_roles(guild_id, user_id, role_id) VALUES(?1,?2,?3)",
-            rusqlite::params![body.guild_id, app.bot.id, role_id],
-        )
-        .ok();
-    }
     let scopes = if body.scopes.is_empty() {
         "bot applications.commands".to_string()
     } else {
         body.scopes.join(" ")
     };
-    conn.execute(
-        "UPDATE applications SET scopes=?1, permissions=?2 WHERE id=?3",
-        rusqlite::params![scopes, body.permissions as i64, app.id],
-    )
-    .ok();
+    store::install_application_grants(&conn, &app, body.guild_id, body.permissions, &scopes);
     let app = store::application_by_id(&conn, app.id).unwrap_or(app);
     drop(conn);
     let _ = state.tx.send(GatewayEvent::GuildMembers {
@@ -419,17 +402,8 @@ async fn interaction_callback(
         return Err(bad("Interaction response needs content."));
     }
     let conn = state.store.conn();
-    let mid = store::next_id(&conn);
-    conn.execute(
-        "INSERT INTO messages(id, channel_id, author_id, content, timestamp) VALUES(?1,?2,?3,?4,?5)",
-        rusqlite::params![mid, pending.channel_id, pending.bot_id, content, now_ms()],
-    ).map_err(internal)?;
-    conn.execute(
-        "UPDATE channels SET last_message_id=?1 WHERE id=?2",
-        rusqlite::params![mid, pending.channel_id],
-    )
-    .ok();
-    let msg = store::message_by_id(&conn, mid, pending.bot_id).ok_or_else(not_found)?;
+    let msg = store::create_bot_message(&conn, pending.channel_id, pending.bot_id, &content)
+        .ok_or_else(not_found)?;
     drop(conn);
     let _ = state.tx.send(GatewayEvent::MessageCreate(Box::new(msg)));
     Ok(Json(json!({ "ok": true })))
@@ -506,14 +480,7 @@ async fn delete_webhook(
 ) -> Result<Json<Value>, ApiError> {
     let me = crate::api::auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    let guild: Option<Id> = conn
-        .query_row(
-            "SELECT guild_id FROM webhooks WHERE id=?1",
-            rusqlite::params![id],
-            |r| r.get(0),
-        )
-        .ok();
-    let Some(guild) = guild else {
+    let Some(guild) = store::webhook_guild(&conn, id) else {
         return Err(not_found());
     };
     if !has(
@@ -560,18 +527,8 @@ async fn execute_webhook(
         .filter(|n| !n.trim().is_empty())
         .unwrap_or(hook.name.clone());
     let color = body.avatar_color.unwrap_or(hook.avatar_color);
-    let mid = store::next_id(&conn);
-    conn.execute(
-        "INSERT INTO messages(id, channel_id, author_id, content, timestamp, webhook_id, webhook_name, webhook_color)
-         VALUES(?1,?2,0,?3,?4,?5,?6,?7)",
-        rusqlite::params![mid, hook.channel_id, content, now_ms(), hook.id, name, color as i64],
-    ).map_err(internal)?;
-    conn.execute(
-        "UPDATE channels SET last_message_id=?1 WHERE id=?2",
-        rusqlite::params![mid, hook.channel_id],
-    )
-    .ok();
-    let msg = store::message_by_id(&conn, mid, 0).ok_or_else(not_found)?;
+    let msg = store::create_webhook_message(&conn, &hook, &content, &name, color)
+        .ok_or_else(not_found)?;
     drop(conn);
     let _ = state
         .tx

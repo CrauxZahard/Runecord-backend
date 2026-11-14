@@ -6,7 +6,6 @@ use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
-use rusqlite::{OptionalExtension, params};
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
@@ -127,15 +126,7 @@ pub(crate) async fn leave_guild(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    let owner: Option<Id> = conn
-        .query_row(
-            "SELECT owner_id FROM guilds WHERE id=?1",
-            params![guild],
-            |r| r.get(0),
-        )
-        .optional()
-        .map_err(internal)?;
-    let Some(owner) = owner else {
+    let Some(owner) = store::guild_owner(&conn, guild) else {
         return Err(not_found());
     };
     if owner == me {
@@ -209,13 +200,7 @@ pub(crate) async fn join_public_guild(
     if !already {
         store::join_public_guild(&conn, guild, me);
     }
-    let count: u32 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM guild_members WHERE guild_id=?1",
-            params![guild],
-            |r| r.get::<_, i64>(0),
-        )
-        .unwrap_or(0) as u32;
+    let count = store::guild_member_count(&conn, guild);
     drop(conn);
     let _ = state.tx.send(GatewayEvent::MemberCountUpdate {
         guild_id: guild,
@@ -236,69 +221,10 @@ pub(crate) async fn create_guild(
     if name.is_empty() || name.chars().count() > 100 {
         return Err(bad("Give the server a name."));
     }
-    let mut conn = state.store.conn();
-    let tx = conn.transaction().map_err(internal)?;
-    let gid = store::next_id(&tx);
-    let everyone = store::next_id(&tx);
-    tx.execute(
-        "INSERT INTO guilds(id, name, icon_color, owner_id, description, created_at, everyone_role_id) VALUES(?1,?2,?3,?4,'',?5,?6)",
-        params![gid, name, body.icon_color as i64, me, now_ms(), everyone],
-    )
-    .map_err(internal)?;
-    tx.execute(
-        "INSERT INTO roles(id, guild_id, name, color, permissions, position, hoist, mentionable) VALUES(?1,?2,'@everyone',0,?3,0,0,0)",
-        params![everyone, gid, (perm::EVERYONE | perm::CREATE_INVITE) as i64],
-    )
-    .map_err(internal)?;
-    tx.execute(
-        "INSERT INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(?1,?2,'',?3)",
-        params![gid, me, now_ms()],
-    )
-    .map_err(internal)?;
-    let cat = store::next_id(&tx);
-    tx.execute(
-        "INSERT INTO channels(id, guild_id, name, kind, position, topic) VALUES(?1,?2,'Text Channels','category',0,'')",
-        params![cat, gid],
-    )
-    .map_err(internal)?;
-    let general = store::next_id(&tx);
-    tx.execute(
-        "INSERT INTO channels(id, guild_id, name, kind, position, parent_id, topic) VALUES(?1,?2,'general','text',1,?3,'This is where it all begins')",
-        params![general, gid, cat],
-    )
-    .map_err(internal)?;
-    tx.commit().map_err(internal)?;
+    let conn = state.store.conn();
+    let guild = store::create_guild(&conn, me, name, body.icon_color)
+        .ok_or_else(|| internal("could not create guild"))?;
     drop(conn);
-
-    let guild = Guild {
-        id: gid,
-        name: name.to_string(),
-        icon_color: body.icon_color,
-        owner_id: me,
-        member_count: 1,
-        created_at: now_ms(),
-        channels: vec![
-            Channel {
-                id: cat,
-                guild_id: Some(gid),
-                name: "Text Channels".into(),
-                kind: ChannelKind::Category,
-                position: 0,
-                ..Channel::default()
-            },
-            Channel {
-                id: general,
-                guild_id: Some(gid),
-                name: "general".into(),
-                kind: ChannelKind::Text,
-                position: 1,
-                parent_id: Some(cat),
-                topic: "This is where it all begins".into(),
-                ..Channel::default()
-            },
-        ],
-        ..Guild::default()
-    };
     let _ = state
         .tx
         .send(GatewayEvent::GuildCreate(Box::new(guild.clone())));
@@ -316,42 +242,20 @@ pub(crate) async fn update_guild(
     if !has(store::base_permissions(&conn, id, me), perm::MANAGE_GUILD) {
         return Err(forbidden());
     }
-    if let Some(name) = body.name {
-        let name = name.trim();
-        if name.is_empty() {
-            return Err(bad("Name the server."));
-        }
-        conn.execute("UPDATE guilds SET name=?1 WHERE id=?2", params![name, id])
-            .map_err(internal)?;
+    let name = body.name.as_deref().map(str::trim);
+    if name.is_some_and(str::is_empty) {
+        return Err(bad("Name the server."));
     }
-    if let Some(color) = body.icon_color {
-        conn.execute(
-            "UPDATE guilds SET icon_color=?1 WHERE id=?2",
-            params![color as i64, id],
-        )
-        .map_err(internal)?;
-    }
-    if let Some(tag) = body.tag {
-        conn.execute(
-            "UPDATE guilds SET tag=?1 WHERE id=?2",
-            params![tag.chars().take(8).collect::<String>(), id],
-        )
-        .map_err(internal)?;
-    }
-    if let Some(desc) = body.description {
-        conn.execute(
-            "UPDATE guilds SET description=?1 WHERE id=?2",
-            params![desc.chars().take(500).collect::<String>(), id],
-        )
-        .map_err(internal)?;
-    }
-    if let Some(discoverable) = body.discoverable {
-        conn.execute(
-            "UPDATE guilds SET discoverable=?1 WHERE id=?2",
-            params![discoverable as i64, id],
-        )
-        .map_err(internal)?;
-    }
+    store::update_guild_fields(
+        &conn,
+        id,
+        name,
+        body.icon_color,
+        body.tag.as_deref(),
+        body.description.as_deref(),
+        body.discoverable,
+    )
+    .map_err(internal)?;
     let summary = store::guild_summary_with_unread(&conn, id, me)
         .map(|(summary, _)| summary)
         .ok_or_else(not_found)?;
@@ -378,25 +282,10 @@ pub(crate) async fn delete_guild(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    let owner: Option<Id> = conn
-        .query_row(
-            "SELECT owner_id FROM guilds WHERE id=?1",
-            params![id],
-            |r| r.get(0),
-        )
-        .optional()
-        .map_err(internal)?;
-    if owner != Some(me) {
+    if store::guild_owner(&conn, id) != Some(me) {
         return Err(forbidden());
     }
-    conn.execute("DELETE FROM channels WHERE guild_id=?1", params![id])
-        .ok();
-    conn.execute("DELETE FROM guild_members WHERE guild_id=?1", params![id])
-        .ok();
-    conn.execute("DELETE FROM roles WHERE guild_id=?1", params![id])
-        .ok();
-    conn.execute("DELETE FROM guilds WHERE id=?1", params![id])
-        .ok();
+    store::delete_guild_cascade(&conn, id);
     let _ = state.tx.send(GatewayEvent::GuildDelete { guild_id: id });
     Ok(Json(json!({ "ok": true })))
 }
@@ -606,17 +495,8 @@ async fn set_guild_image(
     if !icon && width < height {
         return Err(bad("The banner should be landscape, ideally 16:9."));
     }
-    let url = state
-        .media
-        .save_with_ext(&body, ext)
-        .map_err(internal)?
-        .url;
-    let column = if icon { "icon_url" } else { "banner_url" };
-    conn.execute(
-        &format!("UPDATE guilds SET {column}=?1 WHERE id=?2"),
-        params![url, guild],
-    )
-    .map_err(internal)?;
+    let url = state.media.save_with_ext(&body, ext).map_err(internal)?.url;
+    store::set_guild_image(&conn, guild, !icon, &url).map_err(internal)?;
     let summary = store::guild_summary_with_unread(&conn, guild, me)
         .map(|(summary, _)| summary)
         .ok_or_else(not_found)?;
@@ -639,12 +519,7 @@ async fn clear_guild_image(
     ) {
         return Err(forbidden());
     }
-    let column = if icon { "icon_url" } else { "banner_url" };
-    conn.execute(
-        &format!("UPDATE guilds SET {column}='' WHERE id=?1"),
-        params![guild],
-    )
-    .map_err(internal)?;
+    store::clear_guild_image(&conn, guild, !icon).map_err(internal)?;
     let summary = store::guild_summary_with_unread(&conn, guild, me)
         .map(|(summary, _)| summary)
         .ok_or_else(not_found)?;

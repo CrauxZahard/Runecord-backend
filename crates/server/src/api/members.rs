@@ -5,7 +5,6 @@ use crate::{AppState, store};
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
-use rusqlite::params;
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -105,21 +104,13 @@ pub(crate) async fn update_member(
     }
     let roles_changed = body.role_ids.is_some();
     if let Some(nick) = body.nickname {
-        conn.execute(
-            "UPDATE guild_members SET nickname=?1 WHERE guild_id=?2 AND user_id=?3",
-            params![nick, guild, user],
-        )
-        .ok();
+        store::set_nickname(&conn, guild, user, &nick);
     }
     if let Some(roles) = body.role_ids {
         let actor = store::base_permissions(&conn, guild, me);
         let admin = actor & perm::ADMINISTRATOR != 0;
         let top = store::member_top_role(&conn, guild, me);
-        conn.execute(
-            "DELETE FROM member_roles WHERE guild_id=?1 AND user_id=?2",
-            params![guild, user],
-        )
-        .ok();
+        store::clear_member_roles(&conn, guild, user);
         for rid in roles {
             if !admin {
                 if let Some(pos) = store::role_position(&conn, guild, rid) {
@@ -128,24 +119,14 @@ pub(crate) async fn update_member(
                     }
                 }
             }
-            conn.execute(
-                "INSERT OR IGNORE INTO member_roles(guild_id, user_id, role_id) VALUES(?1,?2,?3)",
-                params![guild, user, rid],
-            )
-            .ok();
+            store::add_member_role(&conn, guild, user, rid);
         }
     }
     let u = store::user_by_id(&conn, user).ok_or_else(not_found)?;
     let member = Member {
         guild_id: guild,
         user: u,
-        nickname: conn
-            .query_row(
-                "SELECT nickname FROM guild_members WHERE guild_id=?1 AND user_id=?2",
-                params![guild, user],
-                |r| r.get::<_, String>(0),
-            )
-            .unwrap_or_default(),
+        nickname: store::member_nickname(&conn, guild, user),
         roles: store::member_role_ids(&conn, guild, user),
         joined_at: now_ms(),
         timeout_until: store::member_timeout(&conn, guild, user),

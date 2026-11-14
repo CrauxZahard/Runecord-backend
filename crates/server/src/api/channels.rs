@@ -5,7 +5,6 @@ use crate::{AppState, store};
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
-use rusqlite::{OptionalExtension, params};
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
@@ -37,11 +36,7 @@ pub(crate) async fn update_thread(
     {
         return Err(forbidden());
     }
-    conn.execute(
-        "UPDATE channels SET thread_archived=?1 WHERE id=?2",
-        params![body.archived as i64, channel],
-    )
-    .map_err(internal)?;
+    store::set_thread_archived(&conn, channel, body.archived).map_err(internal)?;
     let out = store::channel_by_id(&conn, channel).ok_or_else(not_found)?;
     let out = channel_for(&conn, out, me);
     drop(conn);
@@ -69,20 +64,19 @@ pub(crate) async fn create_channel(
     if name.is_empty() {
         return Err(bad("Name the channel."));
     }
-    let id = store::next_id(&conn);
-    let pos: i64 = conn
-        .query_row(
-            "SELECT COALESCE(MAX(position),0)+1 FROM channels WHERE guild_id=?1",
-            params![guild],
-            |r| r.get(0),
-        )
-        .unwrap_or(1);
-    conn.execute(
-        "INSERT INTO channels(id, guild_id, name, kind, position, parent_id, topic, slowmode, nsfw) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",
-        params![id, guild, name, kind_str(body.kind), pos, body.parent_id, body.topic, body.slowmode as i64, body.nsfw as i64],
+    let position = store::next_channel_position(&conn, guild);
+    let channel = store::insert_channel(
+        &conn,
+        guild,
+        &name,
+        kind_str(body.kind),
+        position,
+        body.parent_id,
+        &body.topic,
+        body.slowmode,
+        body.nsfw,
     )
-    .map_err(internal)?;
-    let channel = store::channel_by_id(&conn, id).ok_or_else(not_found)?;
+    .ok_or_else(|| internal("could not create channel"))?;
     drop(conn);
     let _ = state
         .tx
@@ -111,14 +105,7 @@ pub(crate) async fn update_channel(
 ) -> Result<Json<Channel>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    let guild: Option<Id> = conn
-        .query_row(
-            "SELECT guild_id FROM channels WHERE id=?1",
-            params![id],
-            |r| r.get(0),
-        )
-        .optional()
-        .map_err(internal)?;
+    let guild = store::guild_id_for_channel(&conn, id).ok_or_else(not_found)?;
     if let Some(guild) = guild {
         if !has(
             store::base_permissions(&conn, guild, me),
@@ -130,16 +117,14 @@ pub(crate) async fn update_channel(
     if body.name.trim().is_empty() {
         return Err(bad("Name the channel."));
     }
-    conn.execute(
-        "UPDATE channels SET name=?1, topic=?2, slowmode=?3, nsfw=?4, status=?5 WHERE id=?6",
-        params![
-            body.name.trim().to_lowercase().replace(' ', "-"),
-            body.topic,
-            body.slowmode as i64,
-            body.nsfw as i64,
-            body.status.trim().chars().take(128).collect::<String>(),
-            id
-        ],
+    store::update_channel_fields(
+        &conn,
+        id,
+        &body.name.trim().to_lowercase().replace(' ', "-"),
+        &body.topic,
+        body.slowmode,
+        body.nsfw,
+        &body.status.trim().chars().take(128).collect::<String>(),
     )
     .map_err(internal)?;
     let channel = store::channel_by_id(&conn, id).ok_or_else(not_found)?;
@@ -158,14 +143,7 @@ pub(crate) async fn delete_channel(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    let guild: Option<Id> = conn
-        .query_row(
-            "SELECT guild_id FROM channels WHERE id=?1",
-            params![id],
-            |r| r.get(0),
-        )
-        .optional()
-        .map_err(internal)?;
+    let guild = store::guild_id_for_channel(&conn, id).ok_or_else(not_found)?;
     if let Some(guild) = guild {
         if !has(
             store::base_permissions(&conn, guild, me),
@@ -174,35 +152,7 @@ pub(crate) async fn delete_channel(
             return Err(forbidden());
         }
     }
-    let mut doomed = vec![id];
-    if let Ok(mut stmt) = conn.prepare("SELECT id FROM channels WHERE thread_parent_id=?1") {
-        if let Ok(rows) = stmt.query_map(params![id], |r| r.get::<_, Id>(0)) {
-            doomed.extend(rows.flatten());
-        }
-    }
-    for channel in &doomed {
-        conn.execute(
-            "DELETE FROM reactions WHERE message_id IN (SELECT id FROM messages WHERE channel_id=?1)",
-            params![channel],
-        )
-        .ok();
-        conn.execute(
-            "DELETE FROM attachments WHERE message_id IN (SELECT id FROM messages WHERE channel_id=?1)",
-            params![channel],
-        )
-        .ok();
-        conn.execute("DELETE FROM messages WHERE channel_id=?1", params![channel])
-            .ok();
-        conn.execute(
-            "DELETE FROM overwrites WHERE channel_id=?1",
-            params![channel],
-        )
-        .ok();
-        conn.execute("DELETE FROM reads WHERE channel_id=?1", params![channel])
-            .ok();
-        conn.execute("DELETE FROM channels WHERE id=?1", params![channel])
-            .ok();
-    }
+    let doomed = store::delete_channel_cascade(&conn, id);
     drop(conn);
     for channel in doomed.into_iter().skip(1) {
         let _ = state.tx.send(GatewayEvent::ChannelDelete {

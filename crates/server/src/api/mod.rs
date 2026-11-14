@@ -10,7 +10,6 @@ use axum::{Json, Router};
 use futures_util::{SinkExt, StreamExt};
 use rand::RngCore;
 use runecord_protocol::*;
-use rusqlite::{OptionalExtension, params};
 use serde_json::json;
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -68,15 +67,7 @@ pub fn auth_user(state: &AppState, headers: &HeaderMap) -> Result<Id, ApiError> 
         .ok_or_else(unauthorized)?;
     let conn = state.store.conn();
     if let Some(token) = value.strip_prefix("Bearer ") {
-        let me: Option<Id> = conn
-            .query_row(
-                "SELECT user_id FROM sessions WHERE token=?1",
-                params![store::hash_bot_token(token.trim())],
-                |r| r.get(0),
-            )
-            .optional()
-            .map_err(internal)?;
-        return me.ok_or_else(unauthorized);
+        return store::session_user(&conn, token.trim()).ok_or_else(unauthorized);
     }
     if let Some(token) = value.strip_prefix("Bot ") {
         let bot = store::bot_for_token(&conn, token.trim()).ok_or_else(unauthorized)?;
@@ -98,14 +89,7 @@ pub fn auth_human(state: &AppState, headers: &HeaderMap) -> Result<Id, ApiError>
         .filter(|t| !t.is_empty())
         .ok_or_else(unauthorized)?;
     let conn = state.store.conn();
-    conn.query_row(
-        "SELECT user_id FROM sessions WHERE token=?1",
-        params![store::hash_bot_token(token)],
-        |r| r.get(0),
-    )
-    .optional()
-    .map_err(internal)?
-    .ok_or_else(unauthorized)
+    store::session_user(&conn, token).ok_or_else(unauthorized)
 }
 
 pub(crate) fn new_token() -> String {
@@ -144,11 +128,7 @@ pub(crate) fn verify_password(hash: &str, password: &str) -> bool {
 
 pub(crate) fn make_session(conn: &rusqlite::Connection, user_id: Id) -> String {
     let token = new_token();
-    conn.execute(
-        "INSERT INTO sessions(token, user_id, created_at) VALUES(?1,?2,?3)",
-        params![store::hash_bot_token(&token), user_id, now_ms()],
-    )
-    .ok();
+    store::create_session(conn, user_id, &token);
     token
 }
 

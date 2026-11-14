@@ -1,7 +1,7 @@
 //! Gateway events, commands and envelopes.
 
-use serde::{Deserialize, Serialize};
 use super::*;
+use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
 

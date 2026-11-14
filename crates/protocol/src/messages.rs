@@ -1,7 +1,7 @@
 //! Messages, attachments, reactions and replies.
 
-use serde::{Deserialize, Serialize};
 use super::*;
+use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
 // Messages

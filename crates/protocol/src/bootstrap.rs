@@ -1,8 +1,8 @@
 //! The initial client bootstrap payload.
 
+use super::*;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use super::*;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Bootstrap {

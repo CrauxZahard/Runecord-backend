@@ -5,7 +5,6 @@ use crate::{AppState, store};
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
-use rusqlite::params;
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -45,29 +44,22 @@ pub(crate) async fn upload(
         clean
     };
     let ext = filename.rsplit('.').next().unwrap_or("bin").to_lowercase();
-    let asset = state
-        .media
-        .save_with_ext(&body, &ext)
-        .map_err(internal)?;
+    let asset = state.media.save_with_ext(&body, &ext).map_err(internal)?;
     let url = asset.url.clone();
     let hash = asset.hash.clone();
     let conn = state.store.conn();
     store::record_cdn(&conn, &hash, &filename, &q.content_type, body.len() as u64);
-    let id = store::next_id(&conn);
-    conn.execute(
-        "INSERT INTO attachments(id, uploader_id, filename, size, content_type, url, width, height) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
-        params![id, me, filename, body.len() as i64, q.content_type, url, q.width as i64, q.height as i64],
+    let attachment = store::insert_attachment(
+        &conn,
+        me,
+        &filename,
+        body.len() as u64,
+        &q.content_type,
+        &url,
+        q.width,
+        q.height,
     )
-    .map_err(internal)?;
-    let attachment = Attachment {
-        id,
-        filename,
-        size: body.len() as u64,
-        content_type: q.content_type,
-        url,
-        width: q.width,
-        height: q.height,
-    };
+    .ok_or_else(|| internal("could not store attachment"))?;
     Ok(Json(UploadResponse { attachment }))
 }
 
@@ -89,14 +81,9 @@ pub(crate) async fn cdn_file(
     use axum::body::Bytes;
     use axum::response::IntoResponse;
     let hash = file.split('.').next().unwrap_or("").to_string();
-    let content_type: String = {
+    let content_type = {
         let conn = state.store.conn();
-        conn.query_row(
-            "SELECT content_type FROM cdn_assets WHERE hash=?1",
-            params![hash],
-            |r| r.get(0),
-        )
-        .unwrap_or_else(|_| "application/octet-stream".to_string())
+        store::cdn_content_type(&conn, &hash)
     };
     let Some(bytes) = state.media.read(&file) else {
         return (StatusCode::NOT_FOUND, "not found").into_response();

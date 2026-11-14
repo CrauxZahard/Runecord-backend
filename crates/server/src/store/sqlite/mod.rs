@@ -156,9 +156,14 @@ pub fn next_id(conn: &Connection) -> i64 {
 mod auth;
 mod boosts;
 mod bootstrap;
+mod channels;
 mod discovery;
 mod dms;
+mod events;
 mod guilds;
+mod inbox;
+mod invites;
+mod media;
 mod members;
 mod messages;
 mod model;
@@ -167,14 +172,22 @@ mod notifications;
 mod permissions;
 mod platform;
 mod privacy;
+mod roles;
 mod seed;
+mod social;
+mod users;
 
 pub use auth::*;
 pub use boosts::*;
 pub use bootstrap::*;
+pub use channels::*;
 pub use discovery::*;
 pub use dms::*;
+pub use events::*;
 pub use guilds::*;
+pub use inbox::*;
+pub use invites::*;
+pub use media::*;
 pub use members::*;
 pub use messages::*;
 pub use model::*;
@@ -183,7 +196,10 @@ pub use notifications::*;
 pub use permissions::*;
 pub use platform::*;
 pub use privacy::*;
+pub use roles::*;
 pub use seed::*;
+pub use social::*;
+pub use users::*;
 
 #[cfg(test)]
 mod tests;

@@ -28,8 +28,7 @@ pub struct AppState {
     pub interactions: std::sync::Mutex<HashMap<String, PendingInteraction>>,
     pub guild_cache:
         std::sync::Mutex<cache::BoundedCache<(i64, i64, i64), std::sync::Arc<GuildDetail>>>,
-    pub thumb_cache:
-        std::sync::Mutex<cache::BoundedCache<(String, u32), axum::body::Bytes>>,
+    pub thumb_cache: std::sync::Mutex<cache::BoundedCache<(String, u32), axum::body::Bytes>>,
 }
 
 #[derive(Clone)]

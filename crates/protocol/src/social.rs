@@ -1,7 +1,7 @@
 //! Relationships, read state, DMs and notifications.
 
-use serde::{Deserialize, Serialize};
 use super::*;
+use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
 // Relationships and reads

@@ -5,7 +5,6 @@ use crate::{AppState, store};
 use axum::Json;
 use axum::extract::State;
 use axum::http::HeaderMap;
-use rusqlite::params;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -22,29 +21,9 @@ pub(crate) async fn inbox(
     let mut unreads = Vec::new();
     let mut channels: HashMap<Id, Option<Channel>> = HashMap::new();
 
-    let mut mention_rows = Vec::new();
-    if let Ok(mut stmt) = conn.prepare(
-        "SELECT m.id, m.channel_id, m.author_id, m.content, m.timestamp, u.display_name
-         FROM messages m
-         JOIN users u ON u.id=m.author_id
-         LEFT JOIN reads r ON r.channel_id=m.channel_id AND r.user_id=?2
-         WHERE m.author_id<>?2 AND m.id>COALESCE(r.last_read_id,0)
-         ORDER BY m.timestamp DESC LIMIT 200",
-    ) {
-        if let Ok(rows) = stmt.query_map(params![me, me], |r| {
-            Ok((
-                r.get::<_, Id>(0)?,
-                r.get::<_, Id>(1)?,
-                r.get::<_, Id>(2)?,
-                r.get::<_, String>(3)?,
-                r.get::<_, i64>(4)?,
-                r.get::<_, String>(5)?,
-            ))
-        }) {
-            mention_rows.extend(rows.flatten());
-        }
-    }
-    for (message, channel_id, author, content, timestamp, author_name) in mention_rows {
+    for (message, channel_id, author, content, timestamp, author_name) in
+        store::mention_rows(&conn, me)
+    {
         if mentions.len() >= MENTION_LIMIT {
             break;
         }
@@ -79,15 +58,7 @@ pub(crate) async fn inbox(
         });
     }
 
-    let mut guilds = Vec::new();
-    if let Ok(mut stmt) =
-        conn.prepare("SELECT guild_id FROM guild_members WHERE user_id=?1 ORDER BY guild_id")
-    {
-        if let Ok(rows) = stmt.query_map(params![me], |r| r.get::<_, Id>(0)) {
-            guilds.extend(rows.flatten());
-        }
-    }
-    for guild in guilds {
+    for guild in store::guild_ids_for_user(&conn, me) {
         for (channel_id, count) in store::guild_unread_channels(&conn, guild, me) {
             if unreads.len() >= UNREAD_LIMIT {
                 break;
@@ -98,13 +69,7 @@ pub(crate) async fn inbox(
         }
     }
 
-    let mut dms = Vec::new();
-    if let Ok(mut stmt) = conn.prepare("SELECT channel_id FROM dm_members WHERE user_id=?1") {
-        if let Ok(rows) = stmt.query_map(params![me], |r| r.get::<_, Id>(0)) {
-            dms.extend(rows.flatten());
-        }
-    }
-    for channel in dms {
+    for channel in store::dm_channel_ids(&conn, me) {
         if unreads.len() >= UNREAD_LIMIT {
             break;
         }
@@ -133,16 +98,8 @@ fn latest_entry(
     if !store::can_view(conn, channel_id, me) {
         return None;
     }
-    let (message, author, author_name, content, timestamp): (Id, Id, String, String, i64) = conn
-        .query_row(
-            "SELECT m.id, m.author_id, u.display_name, m.content, m.timestamp
-             FROM messages m JOIN users u ON u.id=m.author_id
-             WHERE m.channel_id=?1 AND m.author_id<>?2
-             ORDER BY m.id DESC LIMIT 1",
-            params![channel_id, me],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
-        )
-        .ok()?;
+    let (message, author, author_name, content, timestamp) =
+        store::latest_message(conn, channel_id, me)?;
     let (guild_name, channel_name) = labels(conn, &channel, me);
     Some(InboxEntry {
         channel_id,
@@ -161,22 +118,12 @@ fn latest_entry(
 
 fn labels(conn: &rusqlite::Connection, channel: &Channel, me: Id) -> (String, String) {
     if let Some(guild) = channel.guild_id {
-        let guild_name: String = conn
-            .query_row("SELECT name FROM guilds WHERE id=?1", params![guild], |r| {
-                r.get(0)
-            })
-            .unwrap_or_default();
-        return (guild_name, channel.name.clone());
+        return (
+            store::guild_name(conn, guild).unwrap_or_default(),
+            channel.name.clone(),
+        );
     }
-    let mut names = Vec::new();
-    if let Ok(mut stmt) = conn.prepare(
-        "SELECT u.display_name FROM users u JOIN dm_members d ON d.user_id=u.id
-         WHERE d.channel_id=?1 AND u.id<>?2 ORDER BY d.rowid",
-    ) {
-        if let Ok(rows) = stmt.query_map(params![channel.id, me], |r| r.get::<_, String>(0)) {
-            names.extend(rows.flatten());
-        }
-    }
+    let names = store::dm_recipient_names(conn, channel.id, me);
     let title = if channel.name.is_empty() {
         names.join(", ")
     } else {

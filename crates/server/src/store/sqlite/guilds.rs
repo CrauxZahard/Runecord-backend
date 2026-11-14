@@ -4,6 +4,216 @@ use super::*;
 use rusqlite::{Connection, OptionalExtension, params};
 use std::collections::BTreeMap;
 
+pub fn guild_exists(conn: &Connection, guild: Id) -> bool {
+    conn.query_row("SELECT 1 FROM guilds WHERE id=?1", params![guild], |_| {
+        Ok(())
+    })
+    .optional()
+    .ok()
+    .flatten()
+    .is_some()
+}
+
+pub fn guild_owner(conn: &Connection, guild: Id) -> Option<Id> {
+    conn.query_row(
+        "SELECT owner_id FROM guilds WHERE id=?1",
+        params![guild],
+        |row| row.get(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+}
+
+pub fn guild_member_count(conn: &Connection, guild: Id) -> u32 {
+    conn.query_row(
+        "SELECT COUNT(*) FROM guild_members WHERE guild_id=?1",
+        params![guild],
+        |row| row.get::<_, i64>(0),
+    )
+    .unwrap_or(0) as u32
+}
+
+pub fn create_guild(conn: &Connection, me: Id, name: &str, icon_color: u32) -> Option<Guild> {
+    let tx = conn.unchecked_transaction().ok()?;
+    let guild_id = next_id(&tx);
+    let everyone = next_id(&tx);
+    let created_at = now_ms();
+
+    tx.execute(
+        "INSERT INTO guilds(id, name, icon_color, owner_id, description, created_at, everyone_role_id)
+         VALUES(?1,?2,?3,?4,'',?5,?6)",
+        params![guild_id, name, icon_color as i64, me, created_at, everyone],
+    )
+    .ok()?;
+    tx.execute(
+        "INSERT INTO roles(id, guild_id, name, color, permissions, position, hoist, mentionable)
+         VALUES(?1,?2,'@everyone',0,?3,0,0,0)",
+        params![
+            everyone,
+            guild_id,
+            (perm::EVERYONE | perm::CREATE_INVITE) as i64
+        ],
+    )
+    .ok()?;
+    tx.execute(
+        "INSERT INTO guild_members(guild_id, user_id, nickname, joined_at) VALUES(?1,?2,'',?3)",
+        params![guild_id, me, created_at],
+    )
+    .ok()?;
+
+    let category = next_id(&tx);
+    tx.execute(
+        "INSERT INTO channels(id, guild_id, name, kind, position, topic)
+         VALUES(?1,?2,'Text Channels','category',0,'')",
+        params![category, guild_id],
+    )
+    .ok()?;
+    let general = next_id(&tx);
+    tx.execute(
+        "INSERT INTO channels(id, guild_id, name, kind, position, parent_id, topic)
+         VALUES(?1,?2,'general','text',1,?3,'This is where it all begins')",
+        params![general, guild_id, category],
+    )
+    .ok()?;
+    tx.commit().ok()?;
+
+    Some(Guild {
+        id: guild_id,
+        name: name.to_string(),
+        icon_color,
+        owner_id: me,
+        member_count: 1,
+        created_at,
+        channels: vec![
+            Channel {
+                id: category,
+                guild_id: Some(guild_id),
+                name: "Text Channels".into(),
+                kind: ChannelKind::Category,
+                position: 0,
+                ..Channel::default()
+            },
+            Channel {
+                id: general,
+                guild_id: Some(guild_id),
+                name: "general".into(),
+                kind: ChannelKind::Text,
+                position: 1,
+                parent_id: Some(category),
+                topic: "This is where it all begins".into(),
+                ..Channel::default()
+            },
+        ],
+        ..Guild::default()
+    })
+}
+
+pub fn update_guild_fields(
+    conn: &Connection,
+    guild: Id,
+    name: Option<&str>,
+    icon_color: Option<u32>,
+    tag: Option<&str>,
+    description: Option<&str>,
+    discoverable: Option<bool>,
+) -> Result<(), rusqlite::Error> {
+    if let Some(name) = name {
+        conn.execute(
+            "UPDATE guilds SET name=?1 WHERE id=?2",
+            params![name, guild],
+        )?;
+    }
+    if let Some(color) = icon_color {
+        conn.execute(
+            "UPDATE guilds SET icon_color=?1 WHERE id=?2",
+            params![color as i64, guild],
+        )?;
+    }
+    if let Some(tag) = tag {
+        conn.execute(
+            "UPDATE guilds SET tag=?1 WHERE id=?2",
+            params![tag.chars().take(8).collect::<String>(), guild],
+        )?;
+    }
+    if let Some(description) = description {
+        conn.execute(
+            "UPDATE guilds SET description=?1 WHERE id=?2",
+            params![description.chars().take(500).collect::<String>(), guild],
+        )?;
+    }
+    if let Some(discoverable) = discoverable {
+        conn.execute(
+            "UPDATE guilds SET discoverable=?1 WHERE id=?2",
+            params![discoverable as i64, guild],
+        )?;
+    }
+    Ok(())
+}
+
+pub fn delete_guild_cascade(conn: &Connection, guild: Id) {
+    conn.execute("DELETE FROM channels WHERE guild_id=?1", params![guild])
+        .ok();
+    conn.execute(
+        "DELETE FROM guild_members WHERE guild_id=?1",
+        params![guild],
+    )
+    .ok();
+    conn.execute("DELETE FROM roles WHERE guild_id=?1", params![guild])
+        .ok();
+    conn.execute("DELETE FROM guilds WHERE id=?1", params![guild])
+        .ok();
+}
+
+pub fn set_guild_image(
+    conn: &Connection,
+    guild: Id,
+    banner: bool,
+    url: &str,
+) -> Result<(), rusqlite::Error> {
+    let column = if banner { "banner_url" } else { "icon_url" };
+    conn.execute(
+        &format!("UPDATE guilds SET {column}=?1 WHERE id=?2"),
+        params![url, guild],
+    )?;
+    Ok(())
+}
+
+pub fn clear_guild_image(
+    conn: &Connection,
+    guild: Id,
+    banner: bool,
+) -> Result<(), rusqlite::Error> {
+    let column = if banner { "banner_url" } else { "icon_url" };
+    conn.execute(
+        &format!("UPDATE guilds SET {column}='' WHERE id=?1"),
+        params![guild],
+    )?;
+    Ok(())
+}
+
+pub fn guild_basic(conn: &Connection, guild_id: Id) -> Option<Guild> {
+    conn.query_row(
+        "SELECT id, name, icon_color, owner_id, description, created_at
+         FROM guilds WHERE id=?1",
+        params![guild_id],
+        |row| {
+            Ok(Guild {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                icon_color: row.get::<_, i64>(2)? as u32,
+                owner_id: row.get(3)?,
+                description: row.get(4)?,
+                created_at: row.get(5)?,
+                ..Guild::default()
+            })
+        },
+    )
+    .optional()
+    .ok()
+    .flatten()
+}
+
 pub fn guild_summary(conn: &Connection, guild_id: Id, me: Id) -> Option<GuildSummary> {
     guild_summary_with_unread(conn, guild_id, me).map(|(summary, _)| summary)
 }

@@ -67,6 +67,93 @@ pub(crate) fn application_from_row(
     })
 }
 
+pub fn set_application_description(conn: &Connection, app: Id, description: &str) {
+    conn.execute(
+        "UPDATE applications SET description=?1 WHERE id=?2",
+        params![description, app],
+    )
+    .ok();
+}
+
+pub fn install_application_grants(
+    conn: &Connection,
+    app: &Application,
+    guild: Id,
+    permissions: u64,
+    scopes: &str,
+) {
+    if permissions != 0 {
+        let role_id = next_id(conn);
+        conn.execute(
+            "INSERT INTO roles(id, guild_id, name, color, permissions, position, hoist, mentionable)
+             VALUES(?1,?2,?3,?4,?5,1,0,0)",
+            params![
+                role_id,
+                guild,
+                format!("{} bot", app.name),
+                app.icon_color as i64,
+                permissions as i64
+            ],
+        )
+        .ok();
+        conn.execute(
+            "INSERT OR IGNORE INTO member_roles(guild_id, user_id, role_id) VALUES(?1,?2,?3)",
+            params![guild, app.bot.id, role_id],
+        )
+        .ok();
+    }
+    conn.execute(
+        "UPDATE applications SET scopes=?1, permissions=?2 WHERE id=?3",
+        params![scopes, permissions as i64, app.id],
+    )
+    .ok();
+}
+
+pub fn webhook_guild(conn: &Connection, webhook: Id) -> Option<Id> {
+    conn.query_row(
+        "SELECT guild_id FROM webhooks WHERE id=?1",
+        params![webhook],
+        |row| row.get(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+}
+
+pub fn create_webhook_message(
+    conn: &Connection,
+    webhook: &WebhookInfo,
+    content: &str,
+    name: &str,
+    color: u32,
+) -> Option<Message> {
+    let tx = conn.unchecked_transaction().ok()?;
+    let message_id = next_id(&tx);
+    tx.execute(
+        "INSERT INTO messages(id, channel_id, author_id, content, timestamp,
+                             webhook_id, webhook_name, webhook_color)
+         VALUES(?1,?2,0,?3,?4,?5,?6,?7)",
+        params![
+            message_id,
+            webhook.channel_id,
+            content,
+            now_ms(),
+            webhook.id,
+            name,
+            color as i64
+        ],
+    )
+    .ok()?;
+    tx.execute(
+        "UPDATE channels SET last_message_id=?1 WHERE id=?2",
+        params![message_id, webhook.channel_id],
+    )
+    .ok();
+    let message = message_by_id(&tx, message_id, 0);
+    tx.commit().ok()?;
+    message
+}
+
 pub fn applications_owned(conn: &Connection, owner: Id) -> Vec<Application> {
     let mut out = Vec::new();
     if let Ok(mut stmt) = conn.prepare("SELECT * FROM applications WHERE owner_id=?1 ORDER BY id") {

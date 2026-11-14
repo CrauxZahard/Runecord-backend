@@ -204,38 +204,12 @@ pub(crate) fn message_json(conn: &rusqlite::Connection, m: &Message) -> Value {
 }
 
 fn guild_of(conn: &rusqlite::Connection, guild_id: Id) -> Option<Guild> {
-    conn.query_row(
-        "SELECT id, name, icon_color, owner_id, description, created_at FROM guilds WHERE id=?1",
-        rusqlite::params![guild_id],
-        |r| {
-            Ok(Guild {
-                id: r.get(0)?,
-                name: r.get(1)?,
-                icon_color: r.get::<_, i64>(2)? as u32,
-                owner_id: r.get(3)?,
-                description: r.get(4)?,
-                member_count: 0,
-                created_at: r.get(5)?,
-                ..Guild::default()
-            })
-        },
-    )
-    .ok()
+    store::guild_basic(conn, guild_id)
 }
 
 fn is_member(conn: &rusqlite::Connection, guild: Id, user: Id) -> bool {
-    conn.query_row(
-        "SELECT 1 FROM guild_members WHERE guild_id=?1 AND user_id=?2",
-        rusqlite::params![guild, user],
-        |_| Ok(()),
-    )
-    .optional()
-    .ok()
-    .flatten()
-    .is_some()
+    store::guild_member(conn, guild, user)
 }
-
-use rusqlite::OptionalExtension as _;
 
 fn can_manage(conn: &rusqlite::Connection, guild: Id, user: Id, bit: u64) -> bool {
     has(store::base_permissions(conn, guild, user), bit)
@@ -280,27 +254,11 @@ async fn my_guilds(
 ) -> Result<Json<Value>, DiscordError> {
     let me = auth(&state, &headers)?;
     let conn = state.store.conn();
-    let mut out = Vec::new();
-    if let Ok(mut stmt) = conn.prepare(
-        "SELECT g.id, g.name, g.icon_color, g.owner_id, g.description, g.created_at
-         FROM guilds g JOIN guild_members m ON m.guild_id=g.id WHERE m.user_id=?1",
-    ) {
-        if let Ok(rows) = stmt.query_map(rusqlite::params![me], |r| {
-            Ok(Guild {
-                id: r.get(0)?,
-                name: r.get(1)?,
-                icon_color: r.get::<_, i64>(2)? as u32,
-                owner_id: r.get(3)?,
-                description: r.get(4)?,
-                created_at: r.get(5)?,
-                ..Guild::default()
-            })
-        }) {
-            for g in rows.flatten() {
-                out.push(guild_json(&conn, &g, me));
-            }
-        }
-    }
+    let out = store::guild_ids_for_user(&conn, me)
+        .into_iter()
+        .filter_map(|guild_id| store::guild_basic(&conn, guild_id))
+        .map(|guild| guild_json(&conn, &guild, me))
+        .collect();
     Ok(Json(Value::Array(out)))
 }
 
@@ -447,24 +405,9 @@ async fn send_message(
         .as_ref()
         .and_then(|r| r.message_id.parse::<Id>().ok())
         .filter(|id| store::message_by_id(&conn, *id, me).is_some());
-    let id = store::next_id(&conn);
-    conn.execute(
-        "INSERT INTO messages(id, channel_id, author_id, content, timestamp, kind, reply_to) VALUES(?1,?2,?3,?4,?5,?6,?7)",
-        rusqlite::params![id, channel_id, me, content, now_ms(), if reply_to.is_some() { "reply" } else { "default" }, reply_to],
-    )
-    .map_err(|e| bad(e.to_string()))?;
-    conn.execute(
-        "UPDATE channels SET last_message_id=?1 WHERE id=?2",
-        rusqlite::params![id, channel_id],
-    )
-    .ok();
-    conn.execute(
-        "INSERT INTO reads(user_id, channel_id, last_read_id) VALUES(?1,?2,?3)
-         ON CONFLICT(user_id, channel_id) DO UPDATE SET last_read_id=excluded.last_read_id",
-        rusqlite::params![me, channel_id, id],
-    )
-    .ok();
-    let msg = store::message_by_id(&conn, id, me).ok_or_else(unknown_message)?;
+    let target = store::channel_by_id(&conn, channel_id).ok_or_else(unknown_channel)?;
+    let (msg, _) = store::create_message(&conn, me, &target, content, reply_to, &[], None)
+        .map_err(|error| bad(error.to_string()))?;
     let body_json = message_json(&conn, &msg);
     drop(conn);
     let _ = state
@@ -517,11 +460,8 @@ async fn edit_message(
     {
         return Err(missing_access());
     }
-    conn.execute(
-        "UPDATE messages SET content=?1, edited_at=?2 WHERE id=?3",
-        rusqlite::params![body.content.trim_end(), now_ms(), message_id],
-    )
-    .map_err(|e| bad(e.to_string()))?;
+    store::set_message_content(&conn, message_id, body.content.trim_end(), now_ms())
+        .map_err(|error| bad(error.to_string()))?;
     let msg = store::message_by_id(&conn, message_id, me).ok_or_else(unknown_message)?;
     let out = message_json(&conn, &msg);
     drop(conn);
@@ -550,16 +490,7 @@ async fn delete_message(
     {
         return Err(missing_access());
     }
-    conn.execute(
-        "DELETE FROM messages WHERE id=?1",
-        rusqlite::params![message_id],
-    )
-    .ok();
-    conn.execute(
-        "DELETE FROM reactions WHERE message_id=?1",
-        rusqlite::params![message_id],
-    )
-    .ok();
+    store::delete_message(&conn, message_id, channel_id).map_err(|error| bad(error.to_string()))?;
     drop(conn);
     let _ = state.tx.send(GatewayEvent::MessageDelete {
         channel_id,
@@ -587,19 +518,7 @@ fn toggle_reaction(
         return Err(unknown_message());
     }
     let emoji: String = emoji.chars().take(8).collect();
-    if add {
-        conn.execute(
-            "INSERT OR IGNORE INTO reactions(message_id, emoji, user_id) VALUES(?1,?2,?3)",
-            rusqlite::params![message_id, emoji, me],
-        )
-        .ok();
-    } else {
-        conn.execute(
-            "DELETE FROM reactions WHERE message_id=?1 AND emoji=?2 AND user_id=?3",
-            rusqlite::params![message_id, emoji, me],
-        )
-        .ok();
-    }
+    store::set_reaction(conn, message_id, me, &emoji, add);
     Ok(())
 }
 
@@ -641,18 +560,11 @@ async fn list_pins(
     if !store::can_view(&conn, channel_id, me) {
         return Err(missing_access());
     }
-    let mut out = Vec::new();
-    if let Ok(mut stmt) =
-        conn.prepare("SELECT id FROM messages WHERE channel_id=?1 AND pinned=1 ORDER BY id DESC")
-    {
-        if let Ok(rows) = stmt.query_map(rusqlite::params![channel_id], |r| r.get::<_, Id>(0)) {
-            for id in rows.flatten() {
-                if let Some(m) = store::message_by_id(&conn, id, me) {
-                    out.push(message_json(&conn, &m));
-                }
-            }
-        }
-    }
+    let out = store::pinned_ids(&conn, channel_id)
+        .into_iter()
+        .filter_map(|id| store::message_by_id(&conn, id, me))
+        .map(|message| message_json(&conn, &message))
+        .collect();
     Ok(Json(Value::Array(out)))
 }
 
@@ -669,11 +581,7 @@ async fn add_pin(
     if msg.channel_id != channel_id {
         return Err(unknown_message());
     }
-    conn.execute(
-        "UPDATE messages SET pinned=1 WHERE id=?1",
-        rusqlite::params![message_id],
-    )
-    .ok();
+    store::set_pin(&conn, message_id, me, true);
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -690,11 +598,7 @@ async fn remove_pin(
     if msg.channel_id != channel_id {
         return Err(unknown_message());
     }
-    conn.execute(
-        "UPDATE messages SET pinned=0 WHERE id=?1",
-        rusqlite::params![message_id],
-    )
-    .ok();
+    store::set_pin(&conn, message_id, me, false);
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -732,28 +636,14 @@ async fn add_member_role(
     if !can_manage(&conn, guild_id, me, perm::MANAGE_ROLES) {
         return Err(missing_access());
     }
-    let role_exists: bool = conn
-        .query_row(
-            "SELECT 1 FROM roles WHERE id=?1 AND guild_id=?2",
-            rusqlite::params![role_id, guild_id],
-            |_| Ok(()),
-        )
-        .optional()
-        .ok()
-        .flatten()
-        .is_some();
-    if !role_exists {
+    if store::role_in_guild(&conn, guild_id, role_id).is_none() {
         return Err(DiscordError(
             StatusCode::NOT_FOUND,
             10011,
             "Unknown Role".into(),
         ));
     }
-    conn.execute(
-        "INSERT OR IGNORE INTO member_roles(guild_id, user_id, role_id) VALUES(?1,?2,?3)",
-        rusqlite::params![guild_id, user_id, role_id],
-    )
-    .ok();
+    store::add_member_role(&conn, guild_id, user_id, role_id);
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -767,11 +657,7 @@ async fn remove_member_role(
     if !can_manage(&conn, guild_id, me, perm::MANAGE_ROLES) {
         return Err(missing_access());
     }
-    conn.execute(
-        "DELETE FROM member_roles WHERE guild_id=?1 AND user_id=?2 AND role_id=?3",
-        rusqlite::params![guild_id, user_id, role_id],
-    )
-    .ok();
+    store::remove_member_role(&conn, guild_id, user_id, role_id);
     Ok(StatusCode::NO_CONTENT)
 }
 

@@ -10,7 +10,7 @@ pub use sqlite::*;
 
 use crate::crypto;
 use runecord_protocol::{Bootstrap, Id, User};
-use rusqlite::{Connection, MAIN_DB, OptionalExtension, params};
+use rusqlite::{Connection, MAIN_DB};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Mutex, MutexGuard};
@@ -102,16 +102,7 @@ impl Database {
     }
 
     pub fn session_user(&self, token: &str) -> Option<Id> {
-        let hash = sqlite::hash_bot_token(token);
-        self.conn()
-            .query_row(
-                "SELECT user_id FROM sessions WHERE token=?1",
-                params![hash],
-                |r| r.get(0),
-            )
-            .optional()
-            .ok()
-            .flatten()
+        sqlite::session_user(&self.conn(), token)
     }
 
     pub fn user_by_name(&self, username: &str) -> Option<User> {
@@ -123,14 +114,6 @@ impl Database {
     }
 
     pub fn create_session(&self, user_id: Id, token: &str) {
-        let hash = sqlite::hash_bot_token(token);
-        self.conn()
-            .execute(
-                "INSERT INTO sessions(token, user_id, created_at) VALUES(?1,?2,?3)",
-                params![hash, user_id, runecord_protocol::now_ms()],
-            )
-            .ok();
+        sqlite::create_session(&self.conn(), user_id, token);
     }
 }
-
-

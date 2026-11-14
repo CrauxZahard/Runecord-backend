@@ -1,7 +1,7 @@
 //! Channels, threads and permission overwrites.
 
-use serde::{Deserialize, Serialize};
 use super::*;
+use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
 // Guilds, channels, roles

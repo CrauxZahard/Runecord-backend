@@ -6,7 +6,6 @@ use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
-use rusqlite::params;
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
@@ -58,16 +57,7 @@ pub(crate) async fn lookup_users(
         return Ok(Json(Vec::new()));
     }
     let conn = state.store.conn();
-    let like = format!("%{needle}%");
-    let mut ids = Vec::new();
-    if let Ok(mut stmt) = conn.prepare(
-        "SELECT id FROM users WHERE id<>?1 AND (lower(username) LIKE ?2 OR lower(display_name) LIKE ?2) ORDER BY username LIMIT 10",
-    ) {
-        if let Ok(rows) = stmt.query_map(params![me, like], |r| r.get::<_, Id>(0)) {
-            ids.extend(rows.flatten());
-        }
-    }
-    let users = ids
+    let users = store::lookup_ids(&conn, me, &needle)
         .into_iter()
         .filter_map(|id| store::user_by_id(&conn, id))
         .collect();
@@ -150,36 +140,20 @@ pub(crate) async fn change_password(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    let hash: String = conn
-        .query_row(
-            "SELECT pass_hash FROM users WHERE id=?1",
-            params![me],
-            |r| r.get(0),
-        )
-        .optional()
-        .map_err(internal)?
-        .ok_or_else(not_found)?;
+    let hash = store::password_hash(&conn, me).ok_or_else(not_found)?;
     if !verify_password(&hash, &body.current) {
         return Err(bad("Current password is incorrect."));
     }
     if body.new.chars().count() < 6 {
         return Err(bad("New password must be at least 6 characters."));
     }
-    conn.execute(
-        "UPDATE users SET pass_hash=?1 WHERE id=?2",
-        params![hash_password(&body.new), me],
-    )
-    .map_err(internal)?;
+    store::set_password_hash(&conn, me, &hash_password(&body.new)).map_err(internal)?;
     if let Some(token) = headers
         .get("authorization")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
     {
-        conn.execute(
-            "DELETE FROM sessions WHERE user_id=?1 AND token<>?2",
-            params![me, store::hash_bot_token(token)],
-        )
-        .ok();
+        store::delete_other_sessions(&conn, me, &store::hash_bot_token(token));
     }
     Ok(Json(serde_json::json!({ "ok": true })))
 }
@@ -206,25 +180,13 @@ pub(crate) async fn update_me(
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
     if let Some(name) = body.display_name.filter(|n| !n.trim().is_empty()) {
-        conn.execute(
-            "UPDATE users SET display_name=?1 WHERE id=?2",
-            params![name.trim(), me],
-        )
-        .map_err(internal)?;
+        store::set_display_name(&conn, me, name.trim()).map_err(internal)?;
     }
     if let Some(color) = body.avatar_color {
-        conn.execute(
-            "UPDATE users SET avatar_color=?1 WHERE id=?2",
-            params![color as i64, me],
-        )
-        .map_err(internal)?;
+        store::set_avatar_color(&conn, me, color).map_err(internal)?;
     }
     if let Some(border) = body.avatar_border {
-        conn.execute(
-            "UPDATE users SET avatar_border=?1 WHERE id=?2",
-            params![border as i64, me],
-        )
-        .map_err(internal)?;
+        store::set_avatar_border(&conn, me, border).map_err(internal)?;
     }
     if let Some(badges) = body.badges {
         let clean = badges
@@ -234,84 +196,69 @@ pub(crate) async fn update_me(
             .take(8)
             .collect::<Vec<_>>()
             .join(",");
-        conn.execute("UPDATE users SET badges=?1 WHERE id=?2", params![clean, me])
-            .map_err(internal)?;
+        store::set_badges(&conn, me, &clean).map_err(internal)?;
     }
     if let Some(decoration) = body.avatar_decoration {
-        conn.execute(
-            "UPDATE users SET avatar_decoration=?1 WHERE id=?2",
-            params![decoration.trim().chars().take(32).collect::<String>(), me],
+        store::set_avatar_decoration(
+            &conn,
+            me,
+            &decoration.trim().chars().take(32).collect::<String>(),
         )
         .map_err(internal)?;
     }
     if let Some(pronouns) = body.pronouns {
-        conn.execute(
-            "UPDATE users SET pronouns=?1 WHERE id=?2",
-            params![pronouns.trim().chars().take(40).collect::<String>(), me],
+        store::set_pronouns(
+            &conn,
+            me,
+            &pronouns.trim().chars().take(40).collect::<String>(),
         )
         .map_err(internal)?;
     }
     if let Some(banner) = body.banner_color {
-        conn.execute(
-            "UPDATE users SET banner_color=?1 WHERE id=?2",
-            params![banner as i64, me],
-        )
-        .map_err(internal)?;
+        store::set_banner_color(&conn, me, banner).map_err(internal)?;
     }
     if let Some(bio) = body.bio {
-        conn.execute("UPDATE users SET bio=?1 WHERE id=?2", params![bio, me])
-            .map_err(internal)?;
+        store::set_bio(&conn, me, &bio).map_err(internal)?;
     }
     if let Some(status) = body.custom_status {
-        conn.execute(
-            "UPDATE users SET custom_status=?1 WHERE id=?2",
-            params![status, me],
-        )
-        .map_err(internal)?;
+        store::set_custom_status(&conn, me, &status).map_err(internal)?;
     }
     if body.clear_activity {
-        conn.execute(
-            "UPDATE users SET activity_kind='', activity_title='', activity_subtitle='',
-             activity_state='', activity_url='', activity_artwork_url='', activity_started_at=0
-             WHERE id=?1",
-            params![me],
-        )
-        .map_err(internal)?;
+        store::clear_activity(&conn, me).map_err(internal)?;
     } else if let Some(activity) = body.activity {
         let kind: String = activity.kind.trim().chars().take(16).collect();
         if !kind.is_empty() {
-            conn.execute(
-                "UPDATE users SET activity_kind=?1, activity_title=?2, activity_subtitle=?3,
-                 activity_state=?4, activity_url=?5, activity_started_at=?6 WHERE id=?7",
-                params![
-                    kind,
-                    activity.title.trim().chars().take(128).collect::<String>(),
-                    activity
-                        .subtitle
-                        .trim()
-                        .chars()
-                        .take(128)
-                        .collect::<String>(),
-                    activity.state.trim().chars().take(128).collect::<String>(),
-                    activity.url.trim().chars().take(500).collect::<String>(),
-                    activity.started_at.max(0),
-                    me
-                ],
+            store::set_activity(
+                &conn,
+                me,
+                &kind,
+                &activity.title.trim().chars().take(128).collect::<String>(),
+                &activity
+                    .subtitle
+                    .trim()
+                    .chars()
+                    .take(128)
+                    .collect::<String>(),
+                &activity.state.trim().chars().take(128).collect::<String>(),
+                &activity.url.trim().chars().take(500).collect::<String>(),
+                activity.started_at.max(0),
             )
             .map_err(internal)?;
         }
     }
     if let Some(effect) = body.profile_effect {
-        conn.execute(
-            "UPDATE users SET profile_effect=?1 WHERE id=?2",
-            params![effect.trim().chars().take(32).collect::<String>(), me],
+        store::set_profile_effect(
+            &conn,
+            me,
+            &effect.trim().chars().take(32).collect::<String>(),
         )
         .map_err(internal)?;
     }
     if let Some(nameplate) = body.nameplate {
-        conn.execute(
-            "UPDATE users SET nameplate=?1 WHERE id=?2",
-            params![nameplate.trim().chars().take(32).collect::<String>(), me],
+        store::set_nameplate(
+            &conn,
+            me,
+            &nameplate.trim().chars().take(32).collect::<String>(),
         )
         .map_err(internal)?;
     }
@@ -322,11 +269,7 @@ pub(crate) async fn update_me(
         } else {
             "none".into()
         };
-        conn.execute(
-            "UPDATE users SET profile_widget=?1 WHERE id=?2",
-            params![widget, me],
-        )
-        .map_err(internal)?;
+        store::set_profile_widget(&conn, me, &widget).map_err(internal)?;
     }
     if let Some(connections) = body.connections {
         let clean: Vec<ProfileConnection> = connections
@@ -345,11 +288,7 @@ pub(crate) async fn update_me(
             .take(6)
             .collect();
         let encoded = serde_json::to_string(&clean).unwrap_or_else(|_| "[]".into());
-        conn.execute(
-            "UPDATE users SET connections=?1 WHERE id=?2",
-            params![encoded, me],
-        )
-        .map_err(internal)?;
+        store::set_connections(&conn, me, &encoded).map_err(internal)?;
     }
     let user = store::user_by_id(&conn, me).ok_or_else(not_found)?;
     drop(conn);
@@ -366,12 +305,7 @@ pub(crate) async fn update_read(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    conn.execute(
-        "INSERT INTO reads(user_id, channel_id, last_read_id) VALUES(?1,?2,?3)
-         ON CONFLICT(user_id, channel_id) DO UPDATE SET last_read_id=excluded.last_read_id",
-        params![me, body.channel_id, body.last_read_id],
-    )
-    .map_err(internal)?;
+    store::update_read(&conn, me, body.channel_id, Some(body.last_read_id)).map_err(internal)?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -395,13 +329,7 @@ pub(crate) async fn upload_activity_artwork(
 ) -> Result<Json<User>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    let kind: String = conn
-        .query_row(
-            "SELECT activity_kind FROM users WHERE id=?1",
-            params![me],
-            |r| r.get(0),
-        )
-        .unwrap_or_default();
+    let kind = store::activity_kind(&conn, me);
     if kind.is_empty() {
         return Err(bad("Set an activity before uploading artwork."));
     }
@@ -429,16 +357,8 @@ pub(crate) async fn upload_activity_artwork(
     if width > 4096 {
         return Err(bad("Activity artwork must be 4096 pixels or smaller."));
     }
-    let url = state
-        .media
-        .save_with_ext(&body, ext)
-        .map_err(internal)?
-        .url;
-    conn.execute(
-        "UPDATE users SET activity_artwork_url=?1 WHERE id=?2",
-        params![url, me],
-    )
-    .map_err(internal)?;
+    let url = state.media.save_with_ext(&body, ext).map_err(internal)?.url;
+    store::set_activity_artwork(&conn, me, &url).map_err(internal)?;
     let user = store::user_by_id(&conn, me).ok_or_else(not_found)?;
     drop(conn);
     let _ = state
@@ -453,11 +373,7 @@ pub(crate) async fn remove_activity_artwork(
 ) -> Result<Json<User>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    conn.execute(
-        "UPDATE users SET activity_artwork_url='' WHERE id=?1",
-        params![me],
-    )
-    .map_err(internal)?;
+    store::clear_activity_artwork(&conn, me).map_err(internal)?;
     let user = store::user_by_id(&conn, me).ok_or_else(not_found)?;
     drop(conn);
     let _ = state
@@ -538,18 +454,9 @@ async fn set_my_image(
     if banner && width < height {
         return Err(bad("Your banner should be landscape, ideally 16:9."));
     }
-    let url = state
-        .media
-        .save_with_ext(&body, ext)
-        .map_err(internal)?
-        .url;
-    let column = if banner { "banner_url" } else { "avatar_url" };
+    let url = state.media.save_with_ext(&body, ext).map_err(internal)?.url;
     let conn = state.store.conn();
-    conn.execute(
-        &format!("UPDATE users SET {column}=?1 WHERE id=?2"),
-        params![url, me],
-    )
-    .map_err(internal)?;
+    store::set_user_image(&conn, me, banner, &url).map_err(internal)?;
     let user = store::user_by_id(&conn, me).ok_or_else(not_found)?;
     drop(conn);
     let _ = state
@@ -565,12 +472,7 @@ async fn clear_my_image(
 ) -> Result<Json<User>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    let column = if banner { "banner_url" } else { "avatar_url" };
-    conn.execute(
-        &format!("UPDATE users SET {column}='' WHERE id=?1"),
-        params![me],
-    )
-    .map_err(internal)?;
+    store::clear_user_image(&conn, me, banner).map_err(internal)?;
     let user = store::user_by_id(&conn, me).ok_or_else(not_found)?;
     drop(conn);
     let _ = state

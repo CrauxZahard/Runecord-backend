@@ -293,6 +293,48 @@ pub fn leave_guild(conn: &Connection, guild: Id, user: Id) {
     .ok();
 }
 
+pub fn set_nickname(conn: &Connection, guild: Id, user: Id, nickname: &str) {
+    conn.execute(
+        "UPDATE guild_members SET nickname=?1 WHERE guild_id=?2 AND user_id=?3",
+        params![nickname, guild, user],
+    )
+    .ok();
+}
+
+pub fn clear_member_roles(conn: &Connection, guild: Id, user: Id) {
+    conn.execute(
+        "DELETE FROM member_roles WHERE guild_id=?1 AND user_id=?2",
+        params![guild, user],
+    )
+    .ok();
+}
+
+pub fn add_member_role(conn: &Connection, guild: Id, user: Id, role: Id) {
+    conn.execute(
+        "INSERT OR IGNORE INTO member_roles(guild_id, user_id, role_id) VALUES(?1,?2,?3)",
+        params![guild, user, role],
+    )
+    .ok();
+}
+
+pub fn remove_member_role(conn: &Connection, guild: Id, user: Id, role: Id) -> bool {
+    conn.execute(
+        "DELETE FROM member_roles WHERE guild_id=?1 AND user_id=?2 AND role_id=?3",
+        params![guild, user, role],
+    )
+    .map(|changed| changed > 0)
+    .unwrap_or(false)
+}
+
+pub fn member_nickname(conn: &Connection, guild: Id, user: Id) -> String {
+    conn.query_row(
+        "SELECT nickname FROM guild_members WHERE guild_id=?1 AND user_id=?2",
+        params![guild, user],
+        |row| row.get(0),
+    )
+    .unwrap_or_default()
+}
+
 /// Guilds that both users belong to.
 pub fn shared_guilds(conn: &Connection, a: Id, b: Id) -> Vec<Id> {
     let mut out = Vec::new();

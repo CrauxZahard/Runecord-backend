@@ -31,6 +31,68 @@ pub(crate) fn insert_user(
     id
 }
 
+pub fn create_user(
+    conn: &Connection,
+    id: Id,
+    username: &str,
+    display_name: &str,
+    password_hash: &str,
+    color: u32,
+) -> Option<User> {
+    conn.execute(
+        "INSERT INTO users(id, username, display_name, pass_hash, avatar_color, status, created_at)
+         VALUES(?1,?2,?3,?4,?5,'online',?6)",
+        params![
+            id,
+            username,
+            display_name,
+            password_hash,
+            color as i64,
+            now_ms()
+        ],
+    )
+    .ok()?;
+    user_by_id(conn, id)
+}
+
+pub fn credentials_by_name(conn: &Connection, username: &str) -> Option<(Id, String)> {
+    conn.query_row(
+        "SELECT id, pass_hash FROM users WHERE username=?1",
+        params![username],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )
+    .optional()
+    .ok()
+    .flatten()
+}
+
+pub fn session_user(conn: &Connection, token: &str) -> Option<Id> {
+    conn.query_row(
+        "SELECT user_id FROM sessions WHERE token=?1",
+        params![hash_bot_token(token)],
+        |row| row.get(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+}
+
+pub fn create_session(conn: &Connection, user_id: Id, token: &str) {
+    conn.execute(
+        "INSERT INTO sessions(token, user_id, created_at) VALUES(?1,?2,?3)",
+        params![hash_bot_token(token), user_id, now_ms()],
+    )
+    .ok();
+}
+
+pub fn delete_session(conn: &Connection, token: &str) {
+    conn.execute(
+        "DELETE FROM sessions WHERE token=?1",
+        params![hash_bot_token(token)],
+    )
+    .ok();
+}
+
 pub fn hash_bot_token(token: &str) -> String {
     hash_bytes(token.as_bytes())
 }

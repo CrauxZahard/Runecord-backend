@@ -120,10 +120,7 @@ fn spawn_flush_task(state: Arc<AppState>) {
             state.store.flush_if_changed();
             ticks = ticks.wrapping_add(1);
             if ticks.is_multiple_of(150) {
-                cache::prune_dir(
-                    &state.data_dir.join("thumbs"),
-                    cache::THUMB_DISK_BYTES,
-                );
+                cache::prune_dir(&state.data_dir.join("thumbs"), cache::THUMB_DISK_BYTES);
             }
         }
     });

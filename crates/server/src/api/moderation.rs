@@ -5,7 +5,6 @@ use crate::{AppState, store};
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
-use rusqlite::{OptionalExtension, params};
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
@@ -29,26 +28,6 @@ pub(crate) struct PruneBody {
     role_ids: Vec<Id>,
 }
 
-fn guild_of(conn: &rusqlite::Connection, guild: Id) -> Option<Id> {
-    conn.query_row("SELECT id FROM guilds WHERE id=?1", params![guild], |r| {
-        r.get(0)
-    })
-    .optional()
-    .ok()
-    .flatten()
-}
-
-fn owner_of(conn: &rusqlite::Connection, guild: Id) -> Option<Id> {
-    conn.query_row(
-        "SELECT owner_id FROM guilds WHERE id=?1",
-        params![guild],
-        |r| r.get(0),
-    )
-    .optional()
-    .ok()
-    .flatten()
-}
-
 /// Shared validation for all three actions. Returns the actor's reason or an error.
 fn check(
     conn: &rusqlite::Connection,
@@ -57,13 +36,13 @@ fn check(
     user: Id,
     permission: u64,
 ) -> Result<(), ApiError> {
-    if guild_of(conn, guild).is_none() {
+    if !store::guild_exists(conn, guild) {
         return Err(not_found());
     }
     if me == user {
         return Err(bad("You cannot moderate yourself."));
     }
-    if owner_of(conn, guild) == Some(user) {
+    if store::guild_owner(conn, guild) == Some(user) {
         return Err(forbidden());
     }
     if !store::guild_member(conn, guild, me) || !store::guild_member(conn, guild, user) {
@@ -105,7 +84,7 @@ pub(crate) async fn list_bans(
 ) -> Result<Json<Vec<Ban>>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    if guild_of(&conn, guild).is_none() {
+    if !store::guild_exists(&conn, guild) {
         return Err(not_found());
     }
     if !has(store::base_permissions(&conn, guild, me), perm::BAN_MEMBERS) {
@@ -121,7 +100,7 @@ pub(crate) async fn unban_member(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    if guild_of(&conn, guild).is_none() {
+    if !store::guild_exists(&conn, guild) {
         return Err(not_found());
     }
     if !has(store::base_permissions(&conn, guild, me), perm::BAN_MEMBERS) {
@@ -152,7 +131,7 @@ pub(crate) async fn prune_preview(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    if guild_of(&conn, guild).is_none() {
+    if !store::guild_exists(&conn, guild) {
         return Err(not_found());
     }
     if !has(
@@ -176,7 +155,7 @@ pub(crate) async fn prune_members(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    if guild_of(&conn, guild).is_none() {
+    if !store::guild_exists(&conn, guild) {
         return Err(not_found());
     }
     if !has(
@@ -199,13 +178,7 @@ pub(crate) async fn prune_members(
             { "key": "pruned", "new_value": pruned.len() as u32 }
         ]),
     );
-    let count: u32 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM guild_members WHERE guild_id=?1",
-            params![guild],
-            |r| r.get::<_, i64>(0),
-        )
-        .unwrap_or(0) as u32;
+    let count = store::guild_member_count(&conn, guild);
     drop(conn);
     for user in &pruned {
         let _ = state.tx.send(GatewayEvent::MemberRemove {
@@ -342,15 +315,7 @@ pub(crate) async fn submit_appeal(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    let guild: Option<Id> = conn
-        .query_row(
-            "SELECT guild_id FROM invites WHERE code=?1",
-            params![code],
-            |r| r.get(0),
-        )
-        .optional()
-        .map_err(internal)?;
-    let Some(guild) = guild else {
+    let Some(guild) = store::guild_for_invite(&conn, &code) else {
         return Err(not_found());
     };
     if !store::is_banned(&conn, guild, me) {
@@ -379,7 +344,7 @@ pub(crate) async fn list_appeals(
 ) -> Result<Json<Vec<BanAppeal>>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    if guild_of(&conn, guild).is_none() {
+    if !store::guild_exists(&conn, guild) {
         return Err(not_found());
     }
     if !has(store::base_permissions(&conn, guild, me), perm::BAN_MEMBERS) {
@@ -413,7 +378,7 @@ async fn resolve_appeal_call(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
-    if guild_of(&conn, guild).is_none() {
+    if !store::guild_exists(&conn, guild) {
         return Err(not_found());
     }
     if !has(store::base_permissions(&conn, guild, me), perm::BAN_MEMBERS) {
