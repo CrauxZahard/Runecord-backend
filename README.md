@@ -7,37 +7,48 @@ Standalone Rust service for Runecord: HTTP API, WebSocket gateway, SQLite storag
 ```
 crates/protocol      wire + domain types shared with the client
 crates/server        axum routes, gateway, workers
-crates/server/src/api
-  mod.rs             router, auth helpers, errors
-  auth.rs            register/login/logout
-  users.rs           profiles, activity, effects, nameplates, widgets, read state
-  guilds.rs          guild detail and guild CRUD
-  members.rs         paginated members and member updates
-  channels.rs        channels, overwrites, threads
-  messages.rs        messages, reactions, pins, search
-  media.rs           uploads and the CDN/thumbnail path
-  roles.rs           role CRUD, icons and links
-  events.rs          server scheduled events
-  invites.rs         invite create/info/join
-  social.rs          friends and DMs
-  bots.rs            bot account CRUD
-  gateway.rs         websocket loop and event filtering
-  misc.rs            cache stats and small helpers
-crates/server/src/store
-  mod.rs             Store trait + SqliteStore boundary
-  sqlite/mod.rs      migrations and connection setup
-  sqlite/model.rs    row mappers and message assembly
-  sqlite/permissions.rs  base/channel permissions and overwrites
-  sqlite/guilds.rs   summaries, detail, emoji, children
-  sqlite/members.rs  member pages, counts, bootstrap
-  sqlite/auth.rs     passwords, tokens and bot ownership
-  sqlite/messages.rs message windows and threads
-  sqlite/platform.rs apps, webhooks, audit, CDN registry
-  sqlite/seed.rs     demo seed
-  sqlite/tests.rs    large-guild store tests
+crates/server/src
+  lib.rs             launcher and tracing setup
+  bootstrap.rs       config → storage → state → routers → listener
+  config.rs          CLI parsing (typed errors, unit tested)
+  state.rs           AppState shared by handlers
+  media.rs           MediaStore: hashing, encryption, CDN and thumbnails
+  compat.rs          Discord-compatible /api/v1 surface
+  platform.rs        applications, webhooks, interactions, voice signaling
+  gateway_v10.rs     Discord-style gateway sessions and event pump
+  cache.rs           bounded memory/disk caches and pruning
+  crypto.rs          key load, seal/open
+  ratelimit.rs       token-bucket middleware
+  api/
+    mod.rs           router, auth helpers, errors
+    auth.rs          register/login/logout
+    users.rs         profiles, activity, effects, nameplates, widgets, read state
+    guilds.rs        guild detail and guild CRUD
+    members.rs       paginated members and member updates
+    channels.rs      channels, overwrites, threads
+    messages.rs      messages, reactions, pins, search
+    media.rs         uploads and the CDN/thumbnail path
+    roles.rs         role CRUD, icons and links
+    events.rs        server scheduled events
+    invites.rs       invite create/info/join
+    social.rs        friends and DMs
+    bots.rs          bot account CRUD
+    gateway.rs       websocket loop and event filtering
+    misc.rs          cache stats and small helpers
+  store/
+    mod.rs           Database: connection, key, dirty tracking, flush
+    sqlite/mod.rs    schema and connection setup
+    sqlite/model.rs  row mappers and message assembly
+    sqlite/*.rs      SQL grouped by domain: guilds, messages, roles, members,
+                     channels, invites, events, inbox, social, dms, users,
+                     platform, notifications, permissions, privacy, boosts,
+                     discovery, media, moderation, auth, seed
+    sqlite/tests.rs  behavioural store suite
 migrations/          numbered SQL applied at startup
-data/                runtime database + uploads (gitignored)
+data/                runtime database, cdn and thumbs (gitignored)
 ```
+
+See `docs/ARCHITECTURE.md` for the request path and module responsibilities.
 
 ## Run
 
@@ -45,9 +56,10 @@ data/                runtime database + uploads (gitignored)
 cargo run --release -p runecord-server -- --data data
 ```
 
-Defaults to `127.0.0.1:47800`. `--host`, `--port` and `--data` override.
+Defaults to `127.0.0.1:47800`. `--host`, `--port` and `--data` override. Logging uses
+`tracing`; set `RUST_LOG` for more detail (`RUST_LOG=debug`), the default is `info`.
 
-The first start creates `data/runecord.db`, applies `migrations/`, and seeds the demo accounts (`nova`, `maya`, `leo`, `sam`, `ana`, `priya`, `tom`, `runebot`; password `runecord`). Pass `--no-demo` on a public deployment to skip those accounts and start with an empty database.
+The first start creates `data/key.bin` and `data/runecord.db.enc`, applies `migrations/`, and seeds the demo accounts (`nova`, `maya`, `leo`, `sam`, `ana`, `priya`, `tom`, `runebot`; password `runecord`). Pass `--no-demo` on a public deployment to skip those accounts and start with an empty database.
 
 ## Self-hosting
 
@@ -60,14 +72,28 @@ runecord-server --host 0.0.0.0 --port 47800 --data data --no-demo
 ## Encryption at rest
 
 - `data/key.bin`: 32-byte master key generated on first run. Keep it — losing it makes the data unreadable.
-- `data/runecord.db.enc`: the whole database is serialized and AES-256-GCM encrypted, then rewritten when changes are flushed (after each request and every 2 seconds). SQLite runs in memory; no plaintext database file is written.
+- `data/runecord.db.enc`: the whole database is serialized and AES-256-GCM encrypted, then rewritten within two seconds of a write (and immediately on seed and shutdown paths). SQLite runs in memory; no plaintext database file is written.
 - CDN files are AES-256-GCM encrypted on disk and decrypted by `GET /cdn/{file}`.
 - Session tokens, bot tokens and webhook tokens are stored as SHA-256 hashes.
 - Threat model: protects data at rest (stolen disk or backup). A process running as your user can read `key.bin`; wrap it with DPAPI/OS keychain for stronger isolation.
 
 ## Storage
 
-Phase 1 keeps SQLite (WAL) behind `store::Store`, with SQLite queries in `store::sqlite`. Phase 2 adds a Postgres adapter behind the same trait and moves the remaining direct `store.conn()` handler queries into trait methods. Postgres is the intended production adapter; SQLite stays the zero-install local adapter.
+`store::Database` owns the in-memory SQLite connection, the encryption key, dirty tracking and the flush path. SQL lives in `store/sqlite/*`, grouped by domain; API handlers call those functions instead of embedding queries. There is no storage trait: a second backend is not implemented, so the concrete type is the honest boundary. See `docs/DECISIONS.md`.
+
+## Development
+
+Toolchain `1.99.1` is pinned. Both this workspace and `..\Runecord` must pass:
+
+```bat
+cargo fmt --check
+cargo check --workspace --all-targets
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace
+cargo build --workspace
+```
+
+Startup/config tests live beside their modules; the behavioural store suite is `crates/server/src/store/sqlite/tests.rs`. See `docs/ARCHITECTURE.md` for the module map, `docs/CONTRIBUTING.md` for workflow and `docs/DECISIONS.md` for boundary rationale.
 
 ## Caching
 

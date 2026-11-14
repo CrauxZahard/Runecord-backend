@@ -2,7 +2,8 @@
 //!
 //! The database lives in memory while the server runs and is persisted as one AES-256-GCM
 //! encrypted snapshot (`data/runecord.db.enc`). Uploaded files are encrypted the same way.
-//! Phase 2 moves the same trait to a networked Postgres adapter.
+//! SQL lives in the domain modules under `sqlite/`; this type only owns the connection,
+//! key and flush policy.
 
 pub mod sqlite;
 
@@ -32,10 +33,10 @@ impl Database {
                     .deserialize_read_exact(MAIN_DB, &mut slice, plain.len(), false)
                     .is_err()
                 {
-                    eprintln!("runecord: encrypted database could not be opened; starting empty");
+                    tracing::warn!("encrypted database could not be opened; starting empty");
                 }
             } else {
-                eprintln!("runecord: wrong key for encrypted database; starting empty");
+                tracing::warn!("wrong key for encrypted database; starting empty");
             }
         }
         sqlite::migrate(&conn)?;
