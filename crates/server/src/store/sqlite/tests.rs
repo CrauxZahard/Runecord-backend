@@ -779,6 +779,38 @@ fn moderation_kick_ban_timeout_and_hierarchy() {
 }
 
 #[test]
+fn profile_activity_and_connections_round_trip() {
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    conn.execute(
+        "INSERT INTO users(id, username, display_name, pass_hash, created_at) VALUES(1,'nova','Nova','x',1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE users SET activity_kind='spotify', activity_title='Midnight City',
+         activity_subtitle='M83', activity_state='Hurry Up', activity_url='https://example.com',
+         activity_artwork_url='/cdn/art.png', activity_started_at=42,
+         connections='[{\"kind\":\"github\",\"name\":\"nova\"}]' WHERE id=1",
+        [],
+    )
+    .unwrap();
+    let user = user_by_id(&conn, 1).expect("user");
+    let activity = user.activity.expect("activity");
+    assert_eq!(activity.kind, "spotify");
+    assert_eq!(activity.title, "Midnight City");
+    assert_eq!(activity.artwork_url, "/cdn/art.png");
+    assert_eq!(activity.started_at, 42);
+    assert_eq!(user.connections.len(), 1);
+    assert_eq!(user.connections[0].kind, "github");
+    assert_eq!(user.connections[0].name, "nova");
+
+    conn.execute("UPDATE users SET activity_kind='' WHERE id=1", [])
+        .unwrap();
+    assert!(user_by_id(&conn, 1).unwrap().activity.is_none());
+}
+
+#[test]
 fn role_icons_are_gated_and_role_links_round_trip() {
     use super::{role_from_row, role_icon_unlocked};
     let conn = Connection::open_in_memory().expect("memory db");

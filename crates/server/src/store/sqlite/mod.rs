@@ -91,6 +91,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0022_role_links",
         include_str!("../../../../../migrations/0022_role_links.sql"),
     ),
+    (
+        "0023_profile_activity",
+        include_str!("../../../../../migrations/0023_profile_activity.sql"),
+    ),
 ];
 
 /// Applies numbered migrations once each and returns the connection.

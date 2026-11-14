@@ -46,6 +46,32 @@ pub enum PrivacyLevel {
     Nobody,
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProfileActivity {
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub subtitle: String,
+    #[serde(default)]
+    pub state: String,
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub artwork_url: String,
+    #[serde(default)]
+    pub started_at: i64,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProfileConnection {
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub name: String,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct User {
     pub id: Id,
@@ -69,6 +95,10 @@ pub struct User {
     pub badges: Vec<String>,
     #[serde(default)]
     pub avatar_decoration: String,
+    #[serde(default)]
+    pub activity: Option<ProfileActivity>,
+    #[serde(default)]
+    pub connections: Vec<ProfileConnection>,
     pub status: Presence,
     #[serde(default)]
     pub is_bot: bool,

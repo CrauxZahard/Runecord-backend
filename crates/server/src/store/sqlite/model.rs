@@ -37,6 +37,22 @@ pub fn privacy_str(level: PrivacyLevel) -> &'static str {
     }
 }
 
+fn activity_from_user_row(r: &Row<'_>) -> Option<ProfileActivity> {
+    let kind: String = r.get("activity_kind").ok()?;
+    if kind.is_empty() {
+        return None;
+    }
+    Some(ProfileActivity {
+        kind,
+        title: r.get("activity_title").unwrap_or_default(),
+        subtitle: r.get("activity_subtitle").unwrap_or_default(),
+        state: r.get("activity_state").unwrap_or_default(),
+        url: r.get("activity_url").unwrap_or_default(),
+        artwork_url: r.get("activity_artwork_url").unwrap_or_default(),
+        started_at: r.get::<_, i64>("activity_started_at").unwrap_or(0),
+    })
+}
+
 pub fn user_from_row(r: &Row<'_>) -> rusqlite::Result<User> {
     Ok(User {
         id: r.get("id")?,
@@ -59,6 +75,12 @@ pub fn user_from_row(r: &Row<'_>) -> rusqlite::Result<User> {
             .map(str::to_string)
             .collect(),
         avatar_decoration: r.get("avatar_decoration").unwrap_or_default(),
+        activity: activity_from_user_row(r),
+        connections: r
+            .get::<_, String>("connections")
+            .ok()
+            .and_then(|value| serde_json::from_str(&value).ok())
+            .unwrap_or_default(),
         status: presence_from(&r.get::<_, String>("status")?),
         is_bot: r.get::<_, i64>("is_bot").unwrap_or(0) != 0,
         created_at: r.get("created_at")?,
