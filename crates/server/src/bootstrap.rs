@@ -27,7 +27,7 @@ pub async fn run(config: Config) {
     } = config;
 
     if let Err(err) = std::fs::create_dir_all(data_dir.join("uploads")) {
-        eprintln!("runecord: could not create data folder: {err}");
+        tracing::error!("could not create data folder: {err}");
         std::process::exit(1);
     }
 
@@ -35,7 +35,7 @@ pub async fn run(config: Config) {
     let key = match crypto::load_key(&data_dir) {
         Ok(key) => key,
         Err(err) => {
-            eprintln!("runecord: could not load encryption key: {err}");
+            tracing::error!("could not load encryption key: {err}");
             std::process::exit(1);
         }
     };
@@ -43,7 +43,7 @@ pub async fn run(config: Config) {
     let store = match store::Database::open(&db_path, key) {
         Ok(store) => store,
         Err(err) => {
-            eprintln!("runecord: could not open {}: {err}", db_path.display());
+            tracing::error!("could not open {}: {err}", db_path.display());
             std::process::exit(1);
         }
     };
@@ -101,14 +101,14 @@ pub async fn run(config: Config) {
     let listener = match tokio::net::TcpListener::bind(addr).await {
         Ok(listener) => listener,
         Err(err) => {
-            eprintln!("runecord: port {port} is unavailable: {err}");
+            tracing::error!("port {port} is unavailable: {err}");
             std::process::exit(1);
         }
     };
 
-    println!("runecord listening on http://{addr}");
+    tracing::info!("runecord listening on http://{addr}");
     if let Err(err) = axum::serve(listener, app).await {
-        eprintln!("runecord: server stopped with an error: {err}");
+        tracing::error!("server stopped with an error: {err}");
     }
 }
 

@@ -33,6 +33,15 @@ pub enum Parsed {
     Help,
 }
 
+/// Reasons the command line could not be accepted.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum ConfigError {
+    #[error("--host needs an IP address")]
+    MissingHost,
+    #[error("invalid host address {value}")]
+    InvalidHost { value: String },
+}
+
 impl Config {
     /// Parses arguments after the executable name.
     ///
@@ -40,7 +49,7 @@ impl Config {
     /// parser in `main.rs`: `--host`, `--port`, `--data`, `--no-demo`, `--help`.
     /// An invalid host is an error; an invalid port keeps the previous value,
     /// matching the historical behavior.
-    pub fn parse<I, S>(args: I) -> Result<Parsed, String>
+    pub fn parse<I, S>(args: I) -> Result<Parsed, ConfigError>
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
@@ -57,11 +66,11 @@ impl Config {
                 }
                 "--host" => {
                     let Some(value) = args.next() else {
-                        return Err("--host needs an IP address".to_string());
+                        return Err(ConfigError::MissingHost);
                     };
-                    config.host = value
-                        .parse()
-                        .map_err(|_| format!("invalid host address {value}"))?;
+                    config.host = value.parse().map_err(|_| ConfigError::InvalidHost {
+                        value: value.clone(),
+                    })?;
                 }
                 "--no-demo" => config.demo_seed = false,
                 "--data" => {
