@@ -462,13 +462,13 @@ async fn list_webhooks(
     let me = crate::api::auth_user(&state, &headers)?;
     let conn = state.store.conn();
     let ch = store::channel_by_id(&conn, channel).ok_or_else(not_found)?;
-    if let Some(guild) = ch.guild_id {
-        if !has(
+    if let Some(guild) = ch.guild_id
+        && !has(
             store::base_permissions(&conn, guild, me),
             perm::MANAGE_WEBHOOKS,
-        ) {
-            return Err(forbidden());
-        }
+        )
+    {
+        return Err(forbidden());
     }
     Ok(Json(store::webhooks_for_channel(&conn, channel)))
 }

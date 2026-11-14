@@ -19,10 +19,9 @@ pub fn dm_members(conn: &Connection, channel: Id) -> Vec<Id> {
     let mut out = Vec::new();
     if let Ok(mut stmt) =
         conn.prepare("SELECT user_id FROM dm_members WHERE channel_id=?1 ORDER BY rowid")
+        && let Ok(rows) = stmt.query_map(params![channel], |r| r.get::<_, Id>(0))
     {
-        if let Ok(rows) = stmt.query_map(params![channel], |r| r.get::<_, Id>(0)) {
-            out.extend(rows.flatten());
-        }
+        out.extend(rows.flatten());
     }
     out
 }

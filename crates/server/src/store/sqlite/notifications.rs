@@ -54,23 +54,21 @@ pub fn guild_notifications_for(
         "SELECT guild_id, level, muted, suppress_everyone, suppress_roles, suppress_highlights,
                 mute_new_events, mobile_push
          FROM guild_notifications WHERE user_id=?1",
-    ) {
-        if let Ok(rows) = stmt.query_map(params![user], |r| {
-            Ok((
-                r.get::<_, Id>(0)?,
-                GuildNotificationSettings {
-                    level: level_from(&r.get::<_, String>(1)?),
-                    muted: r.get::<_, i64>(2).unwrap_or(0) != 0,
-                    suppress_everyone: r.get::<_, i64>(3).unwrap_or(0) != 0,
-                    suppress_roles: r.get::<_, i64>(4).unwrap_or(0) != 0,
-                    suppress_highlights: r.get::<_, i64>(5).unwrap_or(0) != 0,
-                    mute_new_events: r.get::<_, i64>(6).unwrap_or(0) != 0,
-                    mobile_push: r.get::<_, i64>(7).unwrap_or(0) != 0,
-                },
-            ))
-        }) {
-            out.extend(rows.flatten());
-        }
+    ) && let Ok(rows) = stmt.query_map(params![user], |r| {
+        Ok((
+            r.get::<_, Id>(0)?,
+            GuildNotificationSettings {
+                level: level_from(&r.get::<_, String>(1)?),
+                muted: r.get::<_, i64>(2).unwrap_or(0) != 0,
+                suppress_everyone: r.get::<_, i64>(3).unwrap_or(0) != 0,
+                suppress_roles: r.get::<_, i64>(4).unwrap_or(0) != 0,
+                suppress_highlights: r.get::<_, i64>(5).unwrap_or(0) != 0,
+                mute_new_events: r.get::<_, i64>(6).unwrap_or(0) != 0,
+                mobile_push: r.get::<_, i64>(7).unwrap_or(0) != 0,
+            },
+        ))
+    }) {
+        out.extend(rows.flatten());
     }
     out
 }
@@ -146,13 +144,12 @@ pub fn channel_notifications_for(conn: &Connection, user: Id) -> BTreeMap<Id, No
     let mut out = BTreeMap::new();
     if let Ok(mut stmt) =
         conn.prepare("SELECT channel_id, level FROM channel_notifications WHERE user_id=?1")
-    {
-        if let Ok(rows) = stmt.query_map(params![user], |r| {
+        && let Ok(rows) = stmt.query_map(params![user], |r| {
             Ok((r.get::<_, Id>(0)?, r.get::<_, String>(1)?))
-        }) {
-            for (channel, level) in rows.flatten() {
-                out.insert(channel, level_from(&level));
-            }
+        })
+    {
+        for (channel, level) in rows.flatten() {
+            out.insert(channel, level_from(&level));
         }
     }
     out
@@ -175,12 +172,10 @@ pub fn channel_suppress_for(conn: &Connection, user: Id) -> BTreeMap<Id, bool> {
     if let Ok(mut stmt) = conn.prepare(
         "SELECT channel_id, suppress_everyone FROM channel_notifications
          WHERE user_id=?1 AND suppress_everyone<>0",
-    ) {
-        if let Ok(rows) = stmt.query_map(params![user], |r| {
-            Ok((r.get::<_, Id>(0)?, r.get::<_, i64>(1)? != 0))
-        }) {
-            out.extend(rows.flatten());
-        }
+    ) && let Ok(rows) = stmt.query_map(params![user], |r| {
+        Ok((r.get::<_, Id>(0)?, r.get::<_, i64>(1)? != 0))
+    }) {
+        out.extend(rows.flatten());
     }
     out
 }

@@ -3,6 +3,7 @@
 use super::*;
 use rusqlite::{Connection, OptionalExtension, params};
 
+#[allow(clippy::too_many_arguments)] // plain SQL parameter mapping
 pub fn insert_attachment(
     conn: &Connection,
     uploader: Id,

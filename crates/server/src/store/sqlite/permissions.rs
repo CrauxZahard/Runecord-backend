@@ -26,13 +26,12 @@ pub fn base_permissions(conn: &Connection, guild_id: Id, user_id: Id) -> u64 {
     }
     if let Ok(mut stmt) = conn.prepare(
         "SELECT r.permissions FROM roles r JOIN member_roles mr ON mr.role_id=r.id AND mr.user_id=?2 AND mr.guild_id=?1",
-    ) {
-        if let Ok(rows) = stmt.query_map(params![guild_id, user_id], |r| r.get::<_, i64>(0)) {
+    )
+        && let Ok(rows) = stmt.query_map(params![guild_id, user_id], |r| r.get::<_, i64>(0)) {
             for v in rows.flatten() {
                 perms |= v as u64;
             }
         }
-    }
     perms
 }
 
@@ -53,17 +52,16 @@ pub fn channel_permissions(conn: &Connection, channel_id: Id, user_id: Id) -> u6
     let mut applies: Vec<(i64, u64, u64)> = Vec::new();
     if let Ok(mut stmt) =
         conn.prepare("SELECT target_id, allow, deny FROM overwrites WHERE channel_id=?1")
-    {
-        if let Ok(rows) = stmt.query_map(params![channel_id], |r| {
+        && let Ok(rows) = stmt.query_map(params![channel_id], |r| {
             Ok((
                 r.get::<_, Id>(0)?,
                 r.get::<_, i64>(1)? as u64,
                 r.get::<_, i64>(2)? as u64,
             ))
-        }) {
-            for row in rows.flatten() {
-                applies.push(row);
-            }
+        })
+    {
+        for row in rows.flatten() {
+            applies.push(row);
         }
     }
     let role_ids: Vec<Id> = member_role_ids(conn, guild_id, user_id);
@@ -83,10 +81,9 @@ pub fn member_role_ids(conn: &Connection, guild_id: Id, user_id: Id) -> Vec<Id> 
     let mut out = Vec::new();
     if let Ok(mut stmt) =
         conn.prepare("SELECT role_id FROM member_roles WHERE guild_id=?1 AND user_id=?2")
+        && let Ok(rows) = stmt.query_map(params![guild_id, user_id], |r| r.get::<_, Id>(0))
     {
-        if let Ok(rows) = stmt.query_map(params![guild_id, user_id], |r| r.get::<_, Id>(0)) {
-            out.extend(rows.flatten());
-        }
+        out.extend(rows.flatten());
     }
     out
 }
@@ -135,8 +132,8 @@ pub fn is_dm_member(conn: &Connection, channel_id: Id, user_id: Id) -> bool {
 
 pub fn overwrites(conn: &Connection, channel_id: Id) -> Vec<PermissionOverwrite> {
     let mut out = Vec::new();
-    if let Ok(mut stmt) = conn.prepare("SELECT * FROM overwrites WHERE channel_id=?1") {
-        if let Ok(rows) = stmt.query_map(params![channel_id], |r| {
+    if let Ok(mut stmt) = conn.prepare("SELECT * FROM overwrites WHERE channel_id=?1")
+        && let Ok(rows) = stmt.query_map(params![channel_id], |r| {
             let kind: String = r.get("target_kind")?;
             Ok(PermissionOverwrite {
                 target_id: r.get("target_id")?,
@@ -148,9 +145,9 @@ pub fn overwrites(conn: &Connection, channel_id: Id) -> Vec<PermissionOverwrite>
                 allow: r.get::<_, i64>("allow")? as u64,
                 deny: r.get::<_, i64>("deny")? as u64,
             })
-        }) {
-            out.extend(rows.flatten());
-        }
+        })
+    {
+        out.extend(rows.flatten());
     }
     out
 }

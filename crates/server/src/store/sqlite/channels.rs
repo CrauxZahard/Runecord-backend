@@ -12,6 +12,7 @@ pub fn next_channel_position(conn: &Connection, guild: Id) -> i32 {
     .unwrap_or(1)
 }
 
+#[allow(clippy::too_many_arguments)] // plain SQL parameter mapping
 pub fn insert_channel(
     conn: &Connection,
     guild: Id,
@@ -84,10 +85,10 @@ pub fn update_channel_fields(
 
 pub fn delete_channel_cascade(conn: &Connection, channel: Id) -> Vec<Id> {
     let mut doomed = vec![channel];
-    if let Ok(mut statement) = conn.prepare("SELECT id FROM channels WHERE thread_parent_id=?1") {
-        if let Ok(rows) = statement.query_map(params![channel], |row| row.get::<_, Id>(0)) {
-            doomed.extend(rows.flatten());
-        }
+    if let Ok(mut statement) = conn.prepare("SELECT id FROM channels WHERE thread_parent_id=?1")
+        && let Ok(rows) = statement.query_map(params![channel], |row| row.get::<_, Id>(0))
+    {
+        doomed.extend(rows.flatten());
     }
 
     for doomed_channel in &doomed {

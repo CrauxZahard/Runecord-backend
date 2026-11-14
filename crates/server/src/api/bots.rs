@@ -37,13 +37,13 @@ pub(crate) async fn create_bot_account(
 ) -> Result<Json<BotCreated>, ApiError> {
     let me = auth_human(&state, &headers)?;
     let conn = state.store.conn();
-    if let Some(guild) = body.guild_id {
-        if !has(
+    if let Some(guild) = body.guild_id
+        && !has(
             store::base_permissions(&conn, guild, me),
             perm::MANAGE_GUILD,
-        ) {
-            return Err(forbidden());
-        }
+        )
+    {
+        return Err(forbidden());
     }
     let (bot, token) = store::create_bot(&conn, me, &body.name).map_err(bad)?;
     if let Some(guild) = body.guild_id {

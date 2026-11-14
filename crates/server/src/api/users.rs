@@ -79,10 +79,10 @@ pub(crate) async fn get_users_batch(
     let conn = state.store.conn();
     let mut out = Vec::new();
     for user in body.ids.into_iter().take(100) {
-        if store::users_related(&conn, me, user) {
-            if let Some(user) = store::user_by_id(&conn, user) {
-                out.push(user);
-            }
+        if store::users_related(&conn, me, user)
+            && let Some(user) = store::user_by_id(&conn, user)
+        {
+            out.push(user);
         }
     }
     Ok(Json(out))
@@ -428,7 +428,7 @@ async fn set_my_image(
         return Err(bad("Pick an image first."));
     }
     if body.len() > limit {
-        return Err(bad(&format!(
+        return Err(bad(format!(
             "Image is larger than {} MB.",
             limit / (1024 * 1024)
         )));

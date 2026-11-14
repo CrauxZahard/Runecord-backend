@@ -112,12 +112,11 @@ pub(crate) async fn update_member(
         let top = store::member_top_role(&conn, guild, me);
         store::clear_member_roles(&conn, guild, user);
         for rid in roles {
-            if !admin {
-                if let Some(pos) = store::role_position(&conn, guild, rid) {
-                    if pos >= top {
-                        continue;
-                    }
-                }
+            if !admin
+                && let Some(pos) = store::role_position(&conn, guild, rid)
+                && pos >= top
+            {
+                continue;
             }
             store::add_member_role(&conn, guild, user, rid);
         }

@@ -469,10 +469,11 @@ fn dispatch(
                 return None;
             }
             let mut json = message_json(&conn, m);
-            if !allow_content && !is_dm {
-                if let Some(obj) = json.as_object_mut() {
-                    obj.insert("content".into(), Value::String(String::new()));
-                }
+            if !allow_content
+                && !is_dm
+                && let Some(obj) = json.as_object_mut()
+            {
+                obj.insert("content".into(), Value::String(String::new()));
             }
             let name = if matches!(event, GatewayEvent::MessageCreate(_)) {
                 "MESSAGE_CREATE"
@@ -543,10 +544,10 @@ fn dispatch(
             if intents & INTENT_GUILDS == 0 {
                 return None;
             }
-            if let Some(g) = c.guild_id {
-                if !member(&conn, g, user) {
-                    return None;
-                }
+            if let Some(g) = c.guild_id
+                && !member(&conn, g, user)
+            {
+                return None;
             }
             let name = if matches!(event, GatewayEvent::ChannelCreate(_)) {
                 "CHANNEL_CREATE"
@@ -562,10 +563,10 @@ fn dispatch(
             if intents & INTENT_GUILDS == 0 {
                 return None;
             }
-            if let Some(g) = guild_id {
-                if !member(&conn, *g, user) {
-                    return None;
-                }
+            if let Some(g) = guild_id
+                && !member(&conn, *g, user)
+            {
+                return None;
             }
             Some((
                 "CHANNEL_DELETE".into(),

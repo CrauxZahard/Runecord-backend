@@ -44,10 +44,10 @@ pub(crate) async fn create_event(
     if body.start_at <= 0 {
         return Err(bad("Pick a start time."));
     }
-    if let Some(channel) = body.channel_id {
-        if store::guild_id_for_channel(&conn, channel) != Some(Some(guild)) {
-            return Err(bad("That channel is not in this server."));
-        }
+    if let Some(channel) = body.channel_id
+        && store::guild_id_for_channel(&conn, channel) != Some(Some(guild))
+    {
+        return Err(bad("That channel is not in this server."));
     }
     let event = store::create_event(
         &conn,

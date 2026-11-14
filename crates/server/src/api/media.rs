@@ -29,7 +29,7 @@ pub(crate) async fn upload(
     };
     if body.len() as u64 > limit {
         let mb = limit / (1024 * 1024);
-        return Err(bad(&format!(
+        return Err(bad(format!(
             "File is larger than {mb} MB. Boost the server to raise the limit."
         )));
     }
@@ -89,45 +89,45 @@ pub(crate) async fn cdn_file(
         return (StatusCode::NOT_FOUND, "not found").into_response();
     };
 
-    if let Some(width) = query.w.filter(|w| (64..=2048).contains(w)) {
-        if content_type.starts_with("image/") {
-            let key = (hash.clone(), width);
-            if let Some(hit) = state
+    if let Some(width) = query.w.filter(|w| (64..=2048).contains(w))
+        && content_type.starts_with("image/")
+    {
+        let key = (hash.clone(), width);
+        if let Some(hit) = state
+            .thumb_cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&key)
+        {
+            return image_response(hit);
+        }
+        if let Some(thumb) = state.media.read_thumb(&hash, width) {
+            let thumb = Bytes::from(thumb);
+            state
                 .thumb_cache
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .get(&key)
-            {
-                return image_response(hit);
-            }
-            if let Some(thumb) = state.media.read_thumb(&hash, width) {
-                let thumb = Bytes::from(thumb);
-                state
-                    .thumb_cache
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .put(key, thumb.clone());
-                return image_response(thumb);
-            }
-            if let Ok(image) = image::load_from_memory(&bytes) {
-                let (w, h) = (image.width(), image.height());
-                if w > width {
-                    let target_h = ((h as f32) * (width as f32 / w as f32)).round().max(1.0) as u32;
-                    let thumb = image::imageops::thumbnail(&image, width, target_h);
-                    let mut out = Vec::new();
-                    if thumb
-                        .write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
-                        .is_ok()
-                    {
-                        let _ = state.media.write_thumb(&hash, width, &out);
-                        let thumb = Bytes::from(out);
-                        state
-                            .thumb_cache
-                            .lock()
-                            .unwrap_or_else(std::sync::PoisonError::into_inner)
-                            .put(key, thumb.clone());
-                        return image_response(thumb);
-                    }
+                .put(key, thumb.clone());
+            return image_response(thumb);
+        }
+        if let Ok(image) = image::load_from_memory(&bytes) {
+            let (w, h) = (image.width(), image.height());
+            if w > width {
+                let target_h = ((h as f32) * (width as f32 / w as f32)).round().max(1.0) as u32;
+                let thumb = image::imageops::thumbnail(&image, width, target_h);
+                let mut out = Vec::new();
+                if thumb
+                    .write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
+                    .is_ok()
+                {
+                    let _ = state.media.write_thumb(&hash, width, &out);
+                    let thumb = Bytes::from(out);
+                    state
+                        .thumb_cache
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .put(key, thumb.clone());
+                    return image_response(thumb);
                 }
             }
         }

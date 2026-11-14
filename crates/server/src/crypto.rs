@@ -4,12 +4,12 @@ use std::path::Path;
 
 pub fn load_key(data: &Path) -> std::io::Result<[u8; 32]> {
     let path = data.join("key.bin");
-    if let Ok(bytes) = std::fs::read(&path) {
-        if bytes.len() == 32 {
-            let mut key = [0u8; 32];
-            key.copy_from_slice(&bytes);
-            return Ok(key);
-        }
+    if let Ok(bytes) = std::fs::read(&path)
+        && bytes.len() == 32
+    {
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&bytes);
+        return Ok(key);
     }
     let key: [u8; 32] = rand::random();
     std::fs::create_dir_all(data)?;

@@ -165,22 +165,21 @@ pub fn channel_from_row(r: &Row<'_>) -> rusqlite::Result<Channel> {
 }
 
 pub fn fill_thread_preview(conn: &Connection, channel: &mut Channel) {
-    if let Some(info) = channel.thread.as_mut() {
-        if info.preview.is_empty() {
-            if let Ok(content) = conn.query_row(
-                "SELECT content FROM messages WHERE channel_id=?1 ORDER BY id LIMIT 1",
-                params![channel.id],
-                |r| r.get::<_, String>(0),
-            ) {
-                info.preview = content
-                    .lines()
-                    .next()
-                    .unwrap_or_default()
-                    .chars()
-                    .take(140)
-                    .collect();
-            }
-        }
+    if let Some(info) = channel.thread.as_mut()
+        && info.preview.is_empty()
+        && let Ok(content) = conn.query_row(
+            "SELECT content FROM messages WHERE channel_id=?1 ORDER BY id LIMIT 1",
+            params![channel.id],
+            |r| r.get::<_, String>(0),
+        )
+    {
+        info.preview = content
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .chars()
+            .take(140)
+            .collect();
     }
 }
 

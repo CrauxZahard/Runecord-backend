@@ -102,11 +102,10 @@ pub(crate) async fn gateway_loop(socket: WebSocket, state: Arc<AppState>, me: Id
                         if !gateway_event_visible(&state, me, &event) {
                             continue;
                         }
-                        if let Ok(text) = serde_json::to_string(&event) {
-                            if sink.send(WsMessage::Text(text.into())).await.is_err() {
+                        if let Ok(text) = serde_json::to_string(&event)
+                            && sink.send(WsMessage::Text(text.into())).await.is_err() {
                                 break;
                             }
-                        }
                     }
                     Err(broadcast::error::RecvError::Lagged(_)) => continue,
                     Err(_) => break,

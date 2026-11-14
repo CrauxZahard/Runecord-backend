@@ -106,13 +106,13 @@ pub(crate) async fn update_channel(
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
     let guild = store::guild_id_for_channel(&conn, id).ok_or_else(not_found)?;
-    if let Some(guild) = guild {
-        if !has(
+    if let Some(guild) = guild
+        && !has(
             store::base_permissions(&conn, guild, me),
             perm::MANAGE_CHANNELS,
-        ) {
-            return Err(forbidden());
-        }
+        )
+    {
+        return Err(forbidden());
     }
     if body.name.trim().is_empty() {
         return Err(bad("Name the channel."));
@@ -144,13 +144,13 @@ pub(crate) async fn delete_channel(
     let me = auth_user(&state, &headers)?;
     let conn = state.store.conn();
     let guild = store::guild_id_for_channel(&conn, id).ok_or_else(not_found)?;
-    if let Some(guild) = guild {
-        if !has(
+    if let Some(guild) = guild
+        && !has(
             store::base_permissions(&conn, guild, me),
             perm::MANAGE_CHANNELS,
-        ) {
-            return Err(forbidden());
-        }
+        )
+    {
+        return Err(forbidden());
     }
     let doomed = store::delete_channel_cascade(&conn, id);
     drop(conn);
@@ -222,12 +222,11 @@ pub(crate) async fn set_channel_overwrite(
         if !store::can_manage_member(&conn, guild, me, target) {
             return Err(forbidden());
         }
-    } else if !admin {
-        if let Some(pos) = store::role_position(&conn, guild, target) {
-            if pos >= store::member_top_role(&conn, guild, me) {
-                return Err(forbidden());
-            }
-        }
+    } else if !admin
+        && let Some(pos) = store::role_position(&conn, guild, target)
+        && pos >= store::member_top_role(&conn, guild, me)
+    {
+        return Err(forbidden());
     }
     store::set_overwrite(&conn, channel, target, kind, body.allow, body.deny);
     let updated = store::channel_by_id(&conn, channel).ok_or_else(not_found)?;

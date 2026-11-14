@@ -17,33 +17,27 @@ pub fn list_messages_window(
     if let Some(after) = after {
         if let Ok(mut stmt) = conn.prepare(
             "SELECT id FROM messages WHERE channel_id=?1 AND id>?2 ORDER BY id ASC LIMIT ?3",
-        ) {
-            if let Ok(rows) = stmt.query_map(params![channel, after, limit], |r| r.get::<_, Id>(0))
-            {
-                ids.extend(rows.flatten());
-            }
+        ) && let Ok(rows) = stmt.query_map(params![channel, after, limit], |r| r.get::<_, Id>(0))
+        {
+            ids.extend(rows.flatten());
         }
     } else if let Some(around) = around {
         let half = limit / 2 + 1;
         let mut older: Vec<Id> = Vec::new();
         if let Ok(mut stmt) = conn.prepare(
             "SELECT id FROM messages WHERE channel_id=?1 AND id<=?2 ORDER BY id DESC LIMIT ?3",
-        ) {
-            if let Ok(rows) = stmt.query_map(params![channel, around, half], |r| r.get::<_, Id>(0))
-            {
-                older.extend(rows.flatten());
-            }
+        ) && let Ok(rows) = stmt.query_map(params![channel, around, half], |r| r.get::<_, Id>(0))
+        {
+            older.extend(rows.flatten());
         }
         older.reverse();
         let mut newer: Vec<Id> = Vec::new();
         if let Ok(mut stmt) = conn.prepare(
             "SELECT id FROM messages WHERE channel_id=?1 AND id>?2 ORDER BY id ASC LIMIT ?3",
-        ) {
-            if let Ok(rows) =
-                stmt.query_map(params![channel, around, limit / 2], |r| r.get::<_, Id>(0))
-            {
-                newer.extend(rows.flatten());
-            }
+        ) && let Ok(rows) =
+            stmt.query_map(params![channel, around, limit / 2], |r| r.get::<_, Id>(0))
+        {
+            newer.extend(rows.flatten());
         }
         ids.extend(older);
         ids.extend(newer);
@@ -51,11 +45,10 @@ pub fn list_messages_window(
         let before = before.unwrap_or(i64::MAX);
         if let Ok(mut stmt) = conn.prepare(
             "SELECT id FROM messages WHERE channel_id=?1 AND id<?2 ORDER BY id DESC LIMIT ?3",
-        ) {
-            if let Ok(rows) = stmt.query_map(params![channel, before, limit], |r| r.get::<_, Id>(0))
-            {
-                ids.extend(rows.flatten());
-            }
+        ) && let Ok(rows) =
+            stmt.query_map(params![channel, before, limit], |r| r.get::<_, Id>(0))
+        {
+            ids.extend(rows.flatten());
         }
         ids.reverse();
     }
@@ -68,10 +61,9 @@ pub fn list_threads(conn: &Connection, parent: Id, me: Id) -> Vec<Channel> {
     let mut out = Vec::new();
     if let Ok(mut stmt) = conn.prepare(
         "SELECT * FROM channels WHERE thread_parent_id=?1 AND kind='thread' ORDER BY id DESC",
-    ) {
-        if let Ok(rows) = stmt.query_map(params![parent], channel_from_row) {
-            out.extend(rows.flatten().filter(|c| can_view(conn, c.id, me)));
-        }
+    ) && let Ok(rows) = stmt.query_map(params![parent], channel_from_row)
+    {
+        out.extend(rows.flatten().filter(|c| can_view(conn, c.id, me)));
     }
     for channel in &mut out {
         fill_thread_preview(conn, channel);
@@ -242,10 +234,9 @@ pub fn pinned_ids(conn: &Connection, channel: Id) -> Vec<Id> {
     let mut ids = Vec::new();
     if let Ok(mut statement) =
         conn.prepare("SELECT id FROM messages WHERE channel_id=?1 AND pinned=1 ORDER BY id DESC")
+        && let Ok(rows) = statement.query_map(params![channel], |row| row.get::<_, Id>(0))
     {
-        if let Ok(rows) = statement.query_map(params![channel], |row| row.get::<_, Id>(0)) {
-            ids.extend(rows.flatten());
-        }
+        ids.extend(rows.flatten());
     }
     ids
 }
@@ -387,12 +378,10 @@ pub fn search_message_ids(conn: &Connection, term: &str, limit: usize) -> Vec<(I
     if let Ok(mut statement) = conn.prepare(
         "SELECT id, channel_id FROM messages
          WHERE (?1='' OR content LIKE ?1) ORDER BY id DESC LIMIT ?2",
-    ) {
-        if let Ok(iter) =
-            statement.query_map(params![term, limit], |row| Ok((row.get(0)?, row.get(1)?)))
-        {
-            rows.extend(iter.flatten());
-        }
+    ) && let Ok(iter) =
+        statement.query_map(params![term, limit], |row| Ok((row.get(0)?, row.get(1)?)))
+    {
+        rows.extend(iter.flatten());
     }
     rows
 }

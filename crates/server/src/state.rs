@@ -13,6 +13,10 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tokio::sync::broadcast;
 
+/// Listeners for each live voice channel.
+pub type VoiceRooms =
+    tokio::sync::Mutex<HashMap<i64, Vec<(i64, tokio::sync::mpsc::UnboundedSender<Vec<u8>>)>>>;
+
 pub struct AppState {
     pub store: store::Database,
     pub media: crate::media::MediaStore,
@@ -23,8 +27,7 @@ pub struct AppState {
     pub port: u16,
     pub v10: gateway_v10::Sessions,
     pub voice: std::sync::Mutex<HashMap<i64, VoiceState>>,
-    pub voice_rooms:
-        tokio::sync::Mutex<HashMap<i64, Vec<(i64, tokio::sync::mpsc::UnboundedSender<Vec<u8>>)>>>,
+    pub voice_rooms: VoiceRooms,
     pub interactions: std::sync::Mutex<HashMap<String, PendingInteraction>>,
     pub guild_cache:
         std::sync::Mutex<cache::BoundedCache<(i64, i64, i64), std::sync::Arc<GuildDetail>>>,

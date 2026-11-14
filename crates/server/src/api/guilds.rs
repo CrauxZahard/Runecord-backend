@@ -469,7 +469,7 @@ async fn set_guild_image(
         return Err(bad("Pick an image first."));
     }
     if body.len() > limit {
-        return Err(bad(&format!(
+        return Err(bad(format!(
             "Image is larger than {} MB.",
             limit / (1024 * 1024)
         )));

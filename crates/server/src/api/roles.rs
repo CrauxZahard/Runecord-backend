@@ -255,15 +255,16 @@ pub(crate) async fn update_role(
         "position": body.position,
     });
     if !admin {
-        if let Some(pos) = store::role_position(&conn, guild, role) {
-            if pos > 0 && pos >= store::member_top_role(&conn, guild, me) {
-                return Err(forbidden());
-            }
+        if let Some(pos) = store::role_position(&conn, guild, role)
+            && pos > 0
+            && pos >= store::member_top_role(&conn, guild, me)
+        {
+            return Err(forbidden());
         }
-        if let Some(perms) = body.permissions {
-            if perms & !actor != 0 {
-                return Err(forbidden());
-            }
+        if let Some(perms) = body.permissions
+            && perms & !actor != 0
+        {
+            return Err(forbidden());
         }
     }
     store::update_role_fields(
@@ -299,12 +300,12 @@ pub(crate) async fn delete_role(
         return Err(forbidden());
     }
     let admin = actor & perm::ADMINISTRATOR != 0;
-    if !admin {
-        if let Some(pos) = store::role_position(&conn, guild, role) {
-            if pos > 0 && pos >= store::member_top_role(&conn, guild, me) {
-                return Err(forbidden());
-            }
-        }
+    if !admin
+        && let Some(pos) = store::role_position(&conn, guild, role)
+        && pos > 0
+        && pos >= store::member_top_role(&conn, guild, me)
+    {
+        return Err(forbidden());
     }
     let name = store::role_name(&conn, guild, role);
     store::delete_role_cascade(&conn, guild, role);

@@ -58,18 +58,19 @@ pub(crate) async fn send_message(
     }
     if target.slowmode > 0 {
         let perms = store::channel_permissions(&conn, channel, me);
-        if !has(perms, perm::MANAGE_MESSAGES) && !has(perms, perm::MANAGE_CHANNELS) {
-            if let Some(last) = store::last_message_timestamp(&conn, channel, me) {
-                let wait = last + target.slowmode as i64 * 1000 - now_ms();
-                if wait > 0 {
-                    return Err(ApiError(
-                        StatusCode::TOO_MANY_REQUESTS,
-                        format!(
-                            "Slowmode: wait {}s before posting again.",
-                            (wait + 999) / 1000
-                        ),
-                    ));
-                }
+        if !has(perms, perm::MANAGE_MESSAGES)
+            && !has(perms, perm::MANAGE_CHANNELS)
+            && let Some(last) = store::last_message_timestamp(&conn, channel, me)
+        {
+            let wait = last + target.slowmode as i64 * 1000 - now_ms();
+            if wait > 0 {
+                return Err(ApiError(
+                    StatusCode::TOO_MANY_REQUESTS,
+                    format!(
+                        "Slowmode: wait {}s before posting again.",
+                        (wait + 999) / 1000
+                    ),
+                ));
             }
         }
     }
@@ -313,23 +314,23 @@ fn parse_search(raw: &str) -> SearchFilters {
     let mut words = Vec::new();
     for token in raw.split_whitespace() {
         let lower = token.to_lowercase();
-        if let Some(value) = lower.strip_prefix("from:") {
-            if !value.is_empty() {
-                filters.from = Some(value.to_string());
-                continue;
-            }
+        if let Some(value) = lower.strip_prefix("from:")
+            && !value.is_empty()
+        {
+            filters.from = Some(value.to_string());
+            continue;
         }
-        if let Some(value) = lower.strip_prefix("in:") {
-            if !value.is_empty() {
-                filters.in_channel = Some(value.trim_start_matches('#').to_string());
-                continue;
-            }
+        if let Some(value) = lower.strip_prefix("in:")
+            && !value.is_empty()
+        {
+            filters.in_channel = Some(value.trim_start_matches('#').to_string());
+            continue;
         }
-        if let Some(value) = lower.strip_prefix("mentions:") {
-            if !value.is_empty() {
-                filters.mentions = Some(value.trim_start_matches('@').to_string());
-                continue;
-            }
+        if let Some(value) = lower.strip_prefix("mentions:")
+            && !value.is_empty()
+        {
+            filters.mentions = Some(value.trim_start_matches('@').to_string());
+            continue;
         }
         if lower == "has:link" {
             filters.has_link = true;
@@ -404,10 +405,10 @@ pub(crate) async fn search(
                 continue;
             }
         }
-        if let Some(name) = &filters.in_channel {
-            if !channel.name.to_lowercase().contains(name) {
-                continue;
-            }
+        if let Some(name) = &filters.in_channel
+            && !channel.name.to_lowercase().contains(name)
+        {
+            continue;
         }
         if filters.has_link {
             let content = message.content.to_lowercase();
@@ -418,26 +419,25 @@ pub(crate) async fn search(
                 continue;
             }
         }
-        if let Some(before) = filters.before {
-            if message.timestamp >= before {
-                continue;
-            }
+        if let Some(before) = filters.before
+            && message.timestamp >= before
+        {
+            continue;
         }
-        if let Some(after) = filters.after {
-            if message.timestamp < after {
-                continue;
-            }
+        if let Some(after) = filters.after
+            && message.timestamp < after
+        {
+            continue;
         }
         if let Some(mention) = &mentions_name {
             let mut matched = false;
             for user_id in &message.mentions {
-                if let Some(user) = store::user_by_id(&conn, *user_id) {
-                    if user.username.to_lowercase().contains(mention)
-                        || user.display_name.to_lowercase().contains(mention)
-                    {
-                        matched = true;
-                        break;
-                    }
+                if let Some(user) = store::user_by_id(&conn, *user_id)
+                    && (user.username.to_lowercase().contains(mention)
+                        || user.display_name.to_lowercase().contains(mention))
+                {
+                    matched = true;
+                    break;
                 }
             }
             if !matched {

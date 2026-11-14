@@ -33,10 +33,9 @@ pub fn dm_payload(conn: &Connection, channel_id: Id) -> Option<DmChannel> {
     if let Ok(mut statement) = conn.prepare(
         "SELECT u.* FROM users u JOIN dm_members d ON d.user_id=u.id
          WHERE d.channel_id=?1 ORDER BY d.rowid",
-    ) {
-        if let Ok(rows) = statement.query_map(params![channel_id], user_from_row) {
-            recipients.extend(rows.flatten());
-        }
+    ) && let Ok(rows) = statement.query_map(params![channel_id], user_from_row)
+    {
+        recipients.extend(rows.flatten());
     }
     Some(DmChannel {
         channel,

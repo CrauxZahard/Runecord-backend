@@ -93,26 +93,24 @@ pub fn list_bans(conn: &Connection, guild: Id) -> Vec<Ban> {
     if let Ok(mut stmt) = conn.prepare(
         "SELECT b.user_id, b.actor_id, b.reason, b.created_at FROM bans b
          WHERE b.guild_id=?1 ORDER BY b.created_at DESC",
-    ) {
-        if let Ok(rows) = stmt.query_map(params![guild], |r| {
-            Ok((
-                r.get::<_, Id>(0)?,
-                r.get::<_, Id>(1)?,
-                r.get::<_, String>(2)?,
-                r.get::<_, i64>(3)?,
-            ))
-        }) {
-            for (user, actor, reason, created) in rows.flatten() {
-                let Some(found) = user_by_id(conn, user) else {
-                    continue;
-                };
-                out.push(Ban {
-                    user: found,
-                    reason,
-                    actor_id: actor,
-                    created_at: created,
-                });
-            }
+    ) && let Ok(rows) = stmt.query_map(params![guild], |r| {
+        Ok((
+            r.get::<_, Id>(0)?,
+            r.get::<_, Id>(1)?,
+            r.get::<_, String>(2)?,
+            r.get::<_, i64>(3)?,
+        ))
+    }) {
+        for (user, actor, reason, created) in rows.flatten() {
+            let Some(found) = user_by_id(conn, user) else {
+                continue;
+            };
+            out.push(Ban {
+                user: found,
+                reason,
+                actor_id: actor,
+                created_at: created,
+            });
         }
     }
     out
@@ -164,12 +162,10 @@ pub fn prune_candidates(
     if let Ok(mut stmt) = conn.prepare(
         "SELECT u.id, u.is_bot FROM guild_members gm JOIN users u ON u.id=gm.user_id
          WHERE gm.guild_id=?1",
-    ) {
-        if let Ok(rows) = stmt.query_map(params![guild], |r| {
-            Ok((r.get::<_, Id>(0)?, r.get::<_, i64>(1).unwrap_or(0) != 0))
-        }) {
-            members.extend(rows.flatten());
-        }
+    ) && let Ok(rows) = stmt.query_map(params![guild], |r| {
+        Ok((r.get::<_, Id>(0)?, r.get::<_, i64>(1).unwrap_or(0) != 0))
+    }) {
+        members.extend(rows.flatten());
     }
     let mut out = Vec::new();
     for (user, is_bot) in members {
@@ -238,27 +234,25 @@ pub fn list_appeals(conn: &Connection, guild: Id) -> Vec<BanAppeal> {
     if let Ok(mut stmt) = conn.prepare(
         "SELECT id, user_id, message, created_at FROM ban_appeals
          WHERE guild_id=?1 AND status='pending' ORDER BY created_at ASC",
-    ) {
-        if let Ok(rows) = stmt.query_map(params![guild], |r| {
-            Ok((
-                r.get::<_, Id>(0)?,
-                r.get::<_, Id>(1)?,
-                r.get::<_, String>(2)?,
-                r.get::<_, i64>(3)?,
-            ))
-        }) {
-            for (id, user, message, created_at) in rows.flatten() {
-                let Some(found) = user_by_id(conn, user) else {
-                    continue;
-                };
-                out.push(BanAppeal {
-                    id,
-                    guild_id: guild,
-                    user: found,
-                    message,
-                    created_at,
-                });
-            }
+    ) && let Ok(rows) = stmt.query_map(params![guild], |r| {
+        Ok((
+            r.get::<_, Id>(0)?,
+            r.get::<_, Id>(1)?,
+            r.get::<_, String>(2)?,
+            r.get::<_, i64>(3)?,
+        ))
+    }) {
+        for (id, user, message, created_at) in rows.flatten() {
+            let Some(found) = user_by_id(conn, user) else {
+                continue;
+            };
+            out.push(BanAppeal {
+                id,
+                guild_id: guild,
+                user: found,
+                message,
+                created_at,
+            });
         }
     }
     out

@@ -15,10 +15,9 @@ pub fn bootstrap(conn: &Connection, me: Id) -> Bootstrap {
         let mut out = Vec::new();
         if let Ok(mut stmt) =
             conn.prepare("SELECT guild_id FROM guild_members WHERE user_id=?1 ORDER BY joined_at")
+            && let Ok(rows) = stmt.query_map(params![me], |r| r.get::<_, Id>(0))
         {
-            if let Ok(rows) = stmt.query_map(params![me], |r| r.get::<_, Id>(0)) {
-                out.extend(rows.flatten());
-            }
+            out.extend(rows.flatten());
         }
         out
     };
@@ -44,14 +43,13 @@ pub fn bootstrap(conn: &Connection, me: Id) -> Bootstrap {
         if let Ok(rows) = stmt.query_map(params![me], channel_from_row) {
             for channel in rows.flatten() {
                 let mut recipients = Vec::new();
-                if let Ok(mut rs) = conn.prepare("SELECT u.* FROM users u JOIN dm_members d ON d.user_id=u.id WHERE d.channel_id=?1 AND u.id<>?2") {
-                    if let Ok(us) = rs.query_map(params![channel.id, me], user_from_row) {
+                if let Ok(mut rs) = conn.prepare("SELECT u.* FROM users u JOIN dm_members d ON d.user_id=u.id WHERE d.channel_id=?1 AND u.id<>?2")
+                    && let Ok(us) = rs.query_map(params![channel.id, me], user_from_row) {
                         for u in us.flatten() {
                             users.insert(u.id, u.clone());
                             recipients.push(u);
                         }
                     }
-                }
                 dms.push(DmChannel {
                     channel,
                     recipients,
@@ -61,8 +59,8 @@ pub fn bootstrap(conn: &Connection, me: Id) -> Bootstrap {
     }
 
     let mut relationships = Vec::new();
-    if let Ok(mut stmt) = conn.prepare("SELECT r.kind, r.since, u.* FROM relationships r JOIN users u ON u.id=r.other_id WHERE r.user_id=?1 ORDER BY r.kind") {
-        if let Ok(rows) = stmt.query_map(params![me], |r| {
+    if let Ok(mut stmt) = conn.prepare("SELECT r.kind, r.since, u.* FROM relationships r JOIN users u ON u.id=r.other_id WHERE r.user_id=?1 ORDER BY r.kind")
+        && let Ok(rows) = stmt.query_map(params![me], |r| {
             let kind: String = r.get("kind")?;
             let kind = match kind.as_str() {
                 "friend" => RelationshipKind::Friend,
@@ -77,21 +75,19 @@ pub fn bootstrap(conn: &Connection, me: Id) -> Bootstrap {
                 relationships.push(rel);
             }
         }
-    }
 
     let mut reads = Vec::new();
     if let Ok(mut stmt) =
         conn.prepare("SELECT channel_id, last_read_id FROM reads WHERE user_id=?1")
-    {
-        if let Ok(rows) = stmt.query_map(params![me], |r| {
+        && let Ok(rows) = stmt.query_map(params![me], |r| {
             Ok(ReadState {
                 channel_id: r.get(0)?,
                 last_read_id: r.get(1)?,
                 mention_count: 0,
             })
-        }) {
-            reads.extend(rows.flatten());
-        }
+        })
+    {
+        reads.extend(rows.flatten());
     }
 
     for dm in &dms {

@@ -34,10 +34,9 @@ pub fn lookup_ids(conn: &Connection, me: Id, needle: &str) -> Vec<Id> {
         "SELECT id FROM users
          WHERE id<>?1 AND (lower(username) LIKE ?2 OR lower(display_name) LIKE ?2)
          ORDER BY username LIMIT 10",
-    ) {
-        if let Ok(rows) = statement.query_map(params![me, like], |row| row.get::<_, Id>(0)) {
-            ids.extend(rows.flatten());
-        }
+    ) && let Ok(rows) = statement.query_map(params![me, like], |row| row.get::<_, Id>(0))
+    {
+        ids.extend(rows.flatten());
     }
     ids
 }
@@ -152,6 +151,7 @@ pub fn clear_activity(conn: &Connection, user: Id) -> Result<(), rusqlite::Error
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)] // plain SQL parameter mapping
 pub fn set_activity(
     conn: &Connection,
     user: Id,

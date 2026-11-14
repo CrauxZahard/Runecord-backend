@@ -12,18 +12,16 @@ pub fn public_guilds(conn: &Connection, me: Id) -> Vec<PublicGuild> {
          WHERE g.discoverable<>0
            AND g.id NOT IN (SELECT guild_id FROM guild_members WHERE user_id=?1)
          ORDER BY members DESC, g.name COLLATE NOCASE",
-    ) {
-        if let Ok(rows) = stmt.query_map(params![me], |r| {
-            Ok(PublicGuild {
-                id: r.get(0)?,
-                name: r.get(1)?,
-                icon_color: r.get::<_, i64>(2)? as u32,
-                description: r.get(3)?,
-                member_count: r.get::<_, i64>(4)? as u32,
-            })
-        }) {
-            out.extend(rows.flatten());
-        }
+    ) && let Ok(rows) = stmt.query_map(params![me], |r| {
+        Ok(PublicGuild {
+            id: r.get(0)?,
+            name: r.get(1)?,
+            icon_color: r.get::<_, i64>(2)? as u32,
+            description: r.get(3)?,
+            member_count: r.get::<_, i64>(4)? as u32,
+        })
+    }) {
+        out.extend(rows.flatten());
     }
     out
 }

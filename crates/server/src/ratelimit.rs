@@ -183,10 +183,10 @@ fn actor_key(headers: &HeaderMap) -> String {
 fn major(path: &str) -> &str {
     let parts: Vec<&str> = path.split('/').collect();
     for (i, part) in parts.iter().enumerate() {
-        if matches!(*part, "channels" | "guilds" | "webhooks") {
-            if let Some(next) = parts.get(i + 1) {
-                return next;
-            }
+        if matches!(*part, "channels" | "guilds" | "webhooks")
+            && let Some(next) = parts.get(i + 1)
+        {
+            return next;
         }
     }
     ""

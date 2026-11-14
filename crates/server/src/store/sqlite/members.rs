@@ -67,13 +67,12 @@ pub(crate) fn member_role_map(conn: &Connection, guild_id: Id) -> HashMap<Id, Ve
     let mut out: HashMap<Id, Vec<Id>> = HashMap::new();
     if let Ok(mut stmt) =
         conn.prepare("SELECT user_id, role_id FROM member_roles WHERE guild_id=?1")
-    {
-        if let Ok(rows) = stmt.query_map(params![guild_id], |r| {
+        && let Ok(rows) = stmt.query_map(params![guild_id], |r| {
             Ok((r.get::<_, Id>(0)?, r.get::<_, Id>(1)?))
-        }) {
-            for (user_id, role_id) in rows.flatten() {
-                out.entry(user_id).or_default().push(role_id);
-            }
+        })
+    {
+        for (user_id, role_id) in rows.flatten() {
+            out.entry(user_id).or_default().push(role_id);
         }
     }
     out
@@ -110,6 +109,7 @@ pub(crate) fn member_count(
     .unwrap_or(0) as u32
 }
 
+#[allow(clippy::too_many_arguments)] // plain SQL parameter mapping
 pub fn members_page(
     conn: &Connection,
     guild_id: Id,
@@ -148,8 +148,8 @@ pub fn members_page(
           AND (?4='all' OR (?4='online' AND u.status<>'offline') OR (?4<>'all' AND ?4<>'online' AND u.status=?4))
         ORDER BY (u.status<>'offline') DESC, gm.joined_at ASC, u.id ASC
         LIMIT ?5 OFFSET ?6";
-    if let Ok(mut stmt) = conn.prepare(sql) {
-        if let Ok(rows) =
+    if let Ok(mut stmt) = conn.prepare(sql)
+        && let Ok(rows) =
             stmt.query_map(params![guild_id, like, role, status, limit, offset], |r| {
                 Ok(Member {
                     guild_id,
@@ -160,11 +160,10 @@ pub fn members_page(
                     timeout_until: r.get::<_, i64>("timeout_until").unwrap_or(0),
                 })
             })
-        {
-            for member in rows.flatten() {
-                raw_count += 1;
-                members.push(member);
-            }
+    {
+        for member in rows.flatten() {
+            raw_count += 1;
+            members.push(member);
         }
     }
     let roles = member_role_map(conn, guild_id);
@@ -180,16 +179,15 @@ pub fn members_page(
     } else {
         // Count the filtered set instead of returning a misleading total.
         let mut matched = 0u32;
-        if let Ok(mut stmt) = conn.prepare(sql) {
-            if let Ok(rows) = stmt
+        if let Ok(mut stmt) = conn.prepare(sql)
+            && let Ok(rows) = stmt
                 .query_map(params![guild_id, like, role, status, u32::MAX, 0], |r| {
                     Ok(user_from_row(r)?.id)
                 })
-            {
-                for user in rows.flatten() {
-                    if can_see(user) {
-                        matched += 1;
-                    }
+        {
+            for user in rows.flatten() {
+                if can_see(user) {
+                    matched += 1;
                 }
             }
         }
@@ -217,10 +215,9 @@ pub fn guild_roles(conn: &Connection, guild: Id) -> Vec<Role> {
     let mut out = Vec::new();
     if let Ok(mut stmt) =
         conn.prepare("SELECT * FROM roles WHERE guild_id=?1 ORDER BY position DESC")
+        && let Ok(rows) = stmt.query_map(params![guild], role_from_row)
     {
-        if let Ok(rows) = stmt.query_map(params![guild], role_from_row) {
-            out.extend(rows.flatten());
-        }
+        out.extend(rows.flatten());
     }
     out
 }
@@ -343,10 +340,9 @@ pub fn shared_guilds(conn: &Connection, a: Id, b: Id) -> Vec<Id> {
          JOIN guild_members y ON x.guild_id = y.guild_id
          WHERE x.user_id = ?1 AND y.user_id = ?2
          ORDER BY x.guild_id",
-    ) {
-        if let Ok(rows) = stmt.query_map(params![a, b], |r| r.get::<_, Id>(0)) {
-            out.extend(rows.flatten());
-        }
+    ) && let Ok(rows) = stmt.query_map(params![a, b], |r| r.get::<_, Id>(0))
+    {
+        out.extend(rows.flatten());
     }
     out
 }

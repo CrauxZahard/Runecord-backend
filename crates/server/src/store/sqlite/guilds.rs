@@ -270,8 +270,8 @@ pub(crate) fn guild_unread_channels(conn: &Connection, guild_id: Id, me: Id) -> 
     let settings = guild_notification_settings(conn, me, guild_id);
     if let Ok(mut stmt) = conn.prepare(
         "SELECT id FROM channels WHERE guild_id=?1 AND kind IN ('text','announcement','forum','thread')",
-    ) {
-        if let Ok(rows) = stmt.query_map(params![guild_id], |r| r.get::<_, Id>(0)) {
+    )
+        && let Ok(rows) = stmt.query_map(params![guild_id], |r| r.get::<_, Id>(0)) {
             for channel in rows.flatten() {
                 if can_view(conn, channel, me) {
                     let level = channel_notification_override(conn, me, channel).unwrap_or(
@@ -303,7 +303,6 @@ pub(crate) fn guild_unread_channels(conn: &Connection, guild_id: Id, me: Id) -> 
                 }
             }
         }
-    }
     out
 }
 
@@ -312,10 +311,9 @@ pub fn guild_detail(conn: &Connection, guild_id: Id, me: Id) -> Option<GuildDeta
     let mut channels = Vec::new();
     if let Ok(mut stmt) =
         conn.prepare("SELECT * FROM channels WHERE guild_id=?1 ORDER BY position, id")
+        && let Ok(rows) = stmt.query_map(params![guild_id], channel_from_row)
     {
-        if let Ok(rows) = stmt.query_map(params![guild_id], channel_from_row) {
-            channels.extend(rows.flatten());
-        }
+        channels.extend(rows.flatten());
     }
     let mut overwrite_list = Vec::new();
     channels
@@ -345,10 +343,9 @@ pub fn list_children(conn: &Connection, guild: Id) -> Vec<Channel> {
     let mut out = Vec::new();
     if let Ok(mut stmt) =
         conn.prepare("SELECT * FROM channels WHERE guild_id=?1 ORDER BY position, id")
+        && let Ok(rows) = stmt.query_map(params![guild], channel_from_row)
     {
-        if let Ok(rows) = stmt.query_map(params![guild], channel_from_row) {
-            out.extend(rows.flatten());
-        }
+        out.extend(rows.flatten());
     }
     out
 }
@@ -357,8 +354,8 @@ pub fn guild_members(conn: &Connection, guild: Id) -> Vec<Member> {
     let mut out = Vec::new();
     if let Ok(mut stmt) = conn.prepare(
         "SELECT u.*, gm.nickname, gm.joined_at, gm.timeout_until FROM guild_members gm JOIN users u ON u.id=gm.user_id WHERE gm.guild_id=?1",
-    ) {
-        if let Ok(rows) = stmt.query_map(params![guild], |r| {
+    )
+        && let Ok(rows) = stmt.query_map(params![guild], |r| {
             let user = user_from_row(r)?;
             Ok(Member {
                 guild_id: guild,
@@ -371,7 +368,6 @@ pub fn guild_members(conn: &Connection, guild: Id) -> Vec<Member> {
         }) {
             out.extend(rows.flatten());
         }
-    }
     for m in out.iter_mut() {
         m.roles = member_role_ids(conn, guild, m.user.id);
     }
@@ -383,8 +379,8 @@ pub fn guild_members(conn: &Connection, guild: Id) -> Vec<Member> {
 
 pub fn guild_emojis(conn: &Connection, guild: Id) -> Vec<Emoji> {
     let mut out = Vec::new();
-    if let Ok(mut stmt) = conn.prepare("SELECT * FROM emojis WHERE guild_id=?1 ORDER BY id") {
-        if let Ok(rows) = stmt.query_map(params![guild], |r| {
+    if let Ok(mut stmt) = conn.prepare("SELECT * FROM emojis WHERE guild_id=?1 ORDER BY id")
+        && let Ok(rows) = stmt.query_map(params![guild], |r| {
             Ok(Emoji {
                 id: r.get("id")?,
                 guild_id: r.get("guild_id")?,
@@ -392,9 +388,9 @@ pub fn guild_emojis(conn: &Connection, guild: Id) -> Vec<Emoji> {
                 sticker: r.get::<_, i64>("sticker")? != 0,
                 url: r.get("url")?,
             })
-        }) {
-            out.extend(rows.flatten());
-        }
+        })
+    {
+        out.extend(rows.flatten());
     }
     out
 }

@@ -156,10 +156,10 @@ pub fn create_webhook_message(
 
 pub fn applications_owned(conn: &Connection, owner: Id) -> Vec<Application> {
     let mut out = Vec::new();
-    if let Ok(mut stmt) = conn.prepare("SELECT * FROM applications WHERE owner_id=?1 ORDER BY id") {
-        if let Ok(rows) = stmt.query_map(params![owner], |r| application_from_row(r, conn, true)) {
-            out.extend(rows.flatten());
-        }
+    if let Ok(mut stmt) = conn.prepare("SELECT * FROM applications WHERE owner_id=?1 ORDER BY id")
+        && let Ok(rows) = stmt.query_map(params![owner], |r| application_from_row(r, conn, true))
+    {
+        out.extend(rows.flatten());
     }
     out
 }
@@ -258,27 +258,25 @@ pub fn commands_in_guild(conn: &Connection, guild: Id) -> Vec<ApplicationCommand
          JOIN applications a ON a.id=c.app_id
          JOIN guild_members m ON m.user_id=a.bot_id AND m.guild_id=?1
          ORDER BY c.name, c.id",
-    ) {
-        if let Ok(rows) = stmt.query_map(params![guild], |r| {
-            let raw: String = r.get("options_json")?;
-            Ok(ApplicationCommand {
-                id: r.get("id")?,
-                app_id: r.get("app_id")?,
-                name: r.get("name")?,
-                description: r.get("description")?,
-                options: serde_json::from_str(&raw).unwrap_or(serde_json::Value::Array(Vec::new())),
-            })
-        }) {
-            out.extend(rows.flatten());
-        }
+    ) && let Ok(rows) = stmt.query_map(params![guild], |r| {
+        let raw: String = r.get("options_json")?;
+        Ok(ApplicationCommand {
+            id: r.get("id")?,
+            app_id: r.get("app_id")?,
+            name: r.get("name")?,
+            description: r.get("description")?,
+            options: serde_json::from_str(&raw).unwrap_or(serde_json::Value::Array(Vec::new())),
+        })
+    }) {
+        out.extend(rows.flatten());
     }
     out
 }
 
 pub fn commands_for(conn: &Connection, app: Id) -> Vec<ApplicationCommand> {
     let mut out = Vec::new();
-    if let Ok(mut stmt) = conn.prepare("SELECT * FROM application_commands WHERE app_id=?1") {
-        if let Ok(rows) = stmt.query_map(params![app], |r| {
+    if let Ok(mut stmt) = conn.prepare("SELECT * FROM application_commands WHERE app_id=?1")
+        && let Ok(rows) = stmt.query_map(params![app], |r| {
             let raw: String = r.get("options_json")?;
             Ok(ApplicationCommand {
                 id: r.get("id")?,
@@ -287,9 +285,9 @@ pub fn commands_for(conn: &Connection, app: Id) -> Vec<ApplicationCommand> {
                 description: r.get("description")?,
                 options: serde_json::from_str(&raw).unwrap_or(serde_json::Value::Array(Vec::new())),
             })
-        }) {
-            out.extend(rows.flatten());
-        }
+        })
+    {
+        out.extend(rows.flatten());
     }
     out
 }
@@ -315,23 +313,22 @@ pub fn command_in_guild(
            AND EXISTS(SELECT 1 FROM guild_members m WHERE m.guild_id=?2 AND m.user_id=a.bot_id)
          LIMIT 1",
     ).ok()?;
-    let row = stmt
-        .query_row(params![name, guild], |r| {
-            let app = application_from_row(r, conn, true)?;
-            let raw: String = r.get("options_json")?;
-            let command = ApplicationCommand {
-                id: r.get("cmd_id")?,
-                app_id: app.id,
-                name: r.get("cmd_name")?,
-                description: r.get("cmd_description")?,
-                options: serde_json::from_str(&raw).unwrap_or(serde_json::Value::Array(Vec::new())),
-            };
-            Ok((app, command))
-        })
-        .optional()
-        .ok()
-        .flatten();
-    row
+
+    stmt.query_row(params![name, guild], |r| {
+        let app = application_from_row(r, conn, true)?;
+        let raw: String = r.get("options_json")?;
+        let command = ApplicationCommand {
+            id: r.get("cmd_id")?,
+            app_id: app.id,
+            name: r.get("cmd_name")?,
+            description: r.get("cmd_description")?,
+            options: serde_json::from_str(&raw).unwrap_or(serde_json::Value::Array(Vec::new())),
+        };
+        Ok((app, command))
+    })
+    .optional()
+    .ok()
+    .flatten()
 }
 
 pub fn create_webhook(
@@ -368,8 +365,8 @@ pub fn create_webhook(
 
 pub fn webhooks_for_channel(conn: &Connection, channel: Id) -> Vec<WebhookInfo> {
     let mut out = Vec::new();
-    if let Ok(mut stmt) = conn.prepare("SELECT * FROM webhooks WHERE channel_id=?1") {
-        if let Ok(rows) = stmt.query_map(params![channel], |r| {
+    if let Ok(mut stmt) = conn.prepare("SELECT * FROM webhooks WHERE channel_id=?1")
+        && let Ok(rows) = stmt.query_map(params![channel], |r| {
             Ok(WebhookInfo {
                 id: r.get("id")?,
                 guild_id: r.get("guild_id")?,
@@ -378,9 +375,9 @@ pub fn webhooks_for_channel(conn: &Connection, channel: Id) -> Vec<WebhookInfo> 
                 avatar_color: r.get::<_, i64>("avatar_color")? as u32,
                 token: None,
             })
-        }) {
-            out.extend(rows.flatten());
-        }
+        })
+    {
+        out.extend(rows.flatten());
     }
     out
 }
@@ -440,8 +437,7 @@ pub fn audit_entries(
     let mut out = Vec::new();
     if let Ok(mut stmt) = conn
         .prepare("SELECT * FROM audit_log WHERE guild_id=?1 AND id<?2 ORDER BY id DESC LIMIT ?3")
-    {
-        if let Ok(rows) = stmt.query_map(params![guild, before, limit.clamp(1, 100)], |r| {
+        && let Ok(rows) = stmt.query_map(params![guild, before, limit.clamp(1, 100)], |r| {
             let raw: String = r.get("changes")?;
             Ok(AuditEntry {
                 id: r.get("id")?,
@@ -452,9 +448,9 @@ pub fn audit_entries(
                 changes: serde_json::from_str(&raw).unwrap_or(serde_json::Value::Array(Vec::new())),
                 created_at: r.get("created_at")?,
             })
-        }) {
-            out.extend(rows.flatten());
-        }
+        })
+    {
+        out.extend(rows.flatten());
     }
     out
 }

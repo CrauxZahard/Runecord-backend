@@ -176,10 +176,9 @@ pub fn bots_owned(conn: &Connection, owner: Id) -> Vec<User> {
     if let Ok(mut stmt) = conn.prepare(
         "SELECT u.* FROM users u JOIN bot_owners b ON b.bot_id=u.id
          WHERE b.owner_id=?1 AND u.is_bot=1 ORDER BY u.created_at",
-    ) {
-        if let Ok(rows) = stmt.query_map(params![owner], user_from_row) {
-            out.extend(rows.flatten());
-        }
+    ) && let Ok(rows) = stmt.query_map(params![owner], user_from_row)
+    {
+        out.extend(rows.flatten());
     }
     out
 }

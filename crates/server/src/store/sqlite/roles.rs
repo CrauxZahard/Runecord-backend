@@ -19,18 +19,16 @@ pub fn role_links(conn: &Connection, guild: Id, role: Id) -> Vec<RoleLink> {
     if let Ok(mut statement) = conn.prepare(
         "SELECT id, guild_id, role_id, label, url FROM role_links
          WHERE guild_id=?1 AND role_id=?2 ORDER BY id",
-    ) {
-        if let Ok(rows) = statement.query_map(params![guild, role], |row| {
-            Ok(RoleLink {
-                id: row.get(0)?,
-                guild_id: row.get(1)?,
-                role_id: row.get(2)?,
-                label: row.get(3)?,
-                url: row.get(4)?,
-            })
-        }) {
-            out.extend(rows.flatten());
-        }
+    ) && let Ok(rows) = statement.query_map(params![guild, role], |row| {
+        Ok(RoleLink {
+            id: row.get(0)?,
+            guild_id: row.get(1)?,
+            role_id: row.get(2)?,
+            label: row.get(3)?,
+            url: row.get(4)?,
+        })
+    }) {
+        out.extend(rows.flatten());
     }
     out
 }
@@ -135,6 +133,7 @@ pub fn role_name(conn: &Connection, guild: Id, role: Id) -> String {
     .unwrap_or_default()
 }
 
+#[allow(clippy::too_many_arguments)] // plain SQL parameter mapping
 pub fn update_role_fields(
     conn: &Connection,
     guild: Id,

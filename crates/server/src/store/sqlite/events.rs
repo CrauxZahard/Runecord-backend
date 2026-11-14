@@ -21,10 +21,9 @@ pub fn list_events(conn: &Connection, guild: Id) -> Vec<GuildEvent> {
     if let Ok(mut statement) = conn.prepare(
         "SELECT id, guild_id, creator_id, name, description, start_at, channel_id, created_at
          FROM guild_events WHERE guild_id=?1 ORDER BY start_at",
-    ) {
-        if let Ok(rows) = statement.query_map(params![guild], event_from_row) {
-            out.extend(rows.flatten());
-        }
+    ) && let Ok(rows) = statement.query_map(params![guild], event_from_row)
+    {
+        out.extend(rows.flatten());
     }
     out
 }
