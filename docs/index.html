@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Runecord Developers — Build on Runecord</title>
+  <meta name="description" content="Build bots, applications and integrations on Runecord. HTTP API, WebSocket gateway, webhooks and a Discord-compatible /api/v1 surface.">
+  <meta name="theme-color" content="#020617">
+  <link rel="canonical" href="https://crauxzahard.github.io/Runecord-backend/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Runecord Developers — Build on Runecord">
+  <meta property="og:description" content="A local-first chat platform with a Discord-shaped API. Bots, applications, webhooks and realtime events.">
+  <meta property="og:url" content="https://crauxzahard.github.io/Runecord-backend/">
+  <meta property="og:image" content="https://crauxzahard.github.io/Runecord-backend/assets/img/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://crauxzahard.github.io/Runecord-backend/assets/img/og.png">
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/img/icon-180.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem('runecord-docs-theme') === 'light') {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="index.html" aria-label="Runecord Developers home">
+        <img src="assets/img/logo.svg" width="34" height="34" alt="">
+        <span>Runecord</span>
+        <span class="brand-badge">Developers</span>
+      </a>
+
+      <nav class="topnav" aria-label="Primary navigation">
+        <a href="getting-started.html">Docs</a>
+        <a href="api-reference.html">API</a>
+        <a href="gateway.html">Gateway</a>
+        <a href="bots.html">Bots</a>
+        <a href="discord-compat.html">Discord API</a>
+      </nav>
+
+      <div class="top-actions">
+        <button class="search-trigger" type="button" data-search-open aria-label="Search documentation">
+          <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-search"/></svg>
+          <span>Search docs</span>
+          <kbd>⌘K</kbd>
+        </button>
+        <button class="icon-btn theme-toggle" type="button" aria-label="Switch to light theme" title="Switch theme">
+          <svg class="icon icon-sun" aria-hidden="true"><use href="assets/img/icons.svg#i-sun"/></svg>
+          <svg class="icon icon-moon" aria-hidden="true"><use href="assets/img/icons.svg#i-moon"/></svg>
+        </button>
+        <a class="icon-btn" href="https://github.com/CrauxZahard/Runecord-backend" target="_blank" rel="noopener" aria-label="Backend repository on GitHub" title="Backend repository">
+          <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-github"/></svg>
+        </a>
+        <button class="icon-btn menu-btn" type="button" aria-label="Open documentation menu" aria-expanded="false" aria-controls="sidebar">
+          <svg class="icon menu-open" aria-hidden="true"><use href="assets/img/icons.svg#i-menu"/></svg>
+          <svg class="icon menu-close" aria-hidden="true"><use href="assets/img/icons.svg#i-close"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="docs-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Documentation navigation">
+      <div class="side-group">
+        <p class="side-label">Start here</p>
+        <a class="side-link" href="index.html">Overview</a>
+        <a class="side-link" href="getting-started.html">Getting started</a>
+        <a class="side-link" href="authentication.html">Authentication</a>
+      </div>
+      <div class="side-group">
+        <p class="side-label">Reference</p>
+        <a class="side-link" href="api-reference.html">HTTP API</a>
+        <a class="side-link" href="gateway.html">Gateway</a>
+        <a class="side-link" href="discord-compat.html">Discord-compatible API</a>
+      </div>
+      <div class="side-group">
+        <p class="side-label">Build</p>
+        <a class="side-link" href="bots.html">Bots &amp; apps</a>
+        <a class="side-link" href="bots.html#webhooks">Webhooks</a>
+        <a class="side-link" href="bots.html#interactions">Interactions</a>
+      </div>
+      <div class="side-group">
+        <p class="side-label">More</p>
+        <a class="side-link" href="../Runecord/">Runecord client</a>
+        <a class="side-link" href="https://github.com/CrauxZahard/Runecord-backend" target="_blank" rel="noopener">
+          Backend source
+          <svg class="icon ext" aria-hidden="true"><use href="assets/img/icons.svg#i-external"/></svg>
+        </a>
+      </div>
+      <div class="side-foot">
+        <div class="status-line"><span class="status-dot"></span> Server v0.1.0 · local</div>
+        <code>127.0.0.1:47800</code>
+      </div>
+    </aside>
+    <div class="sidebar-backdrop"></div>
+
+    <main class="doc-main" id="main">
+      <section class="portal-hero">
+        <div class="hero-grid-bg" aria-hidden="true"></div>
+        <div class="portal-orb a" aria-hidden="true"></div>
+        <div class="portal-orb b" aria-hidden="true"></div>
+
+        <div class="wrap">
+          <div class="hero-grid">
+            <div class="hero-copy">
+              <p class="eyebrow"><span class="live-dot"></span> Developer platform · API v0.1.0</p>
+              <h1>Build on <span class="grad">Runecord.</span></h1>
+              <p class="hero-lede">The same API the Runecord client uses, running against your own backend. Create bots, register commands, run webhooks and listen for events.</p>
+
+              <div class="hero-actions">
+                <a class="btn btn-primary" href="getting-started.html">
+                  Start building
+                  <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-arrow"/></svg>
+                </a>
+                <a class="btn btn-ghost" href="api-reference.html">
+                  API reference
+                  <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-book"/></svg>
+                </a>
+              </div>
+
+              <div class="base-url">
+                <span class="base-url-label">Base URL</span>
+                <code>http://127.0.0.1:47800</code>
+                <button class="copy-btn" type="button" data-copy="http://127.0.0.1:47800" aria-label="Copy base URL">
+                  <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-copy"/></svg>
+                  <span class="copy-label">Copy</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="hero-console">
+              <div class="console">
+                <div class="console-top">
+                  <span class="code-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                  <div class="console-tabs" data-tabs="hero-console">
+                    <button type="button" data-tab="request" aria-selected="true">request</button>
+                    <button type="button" data-tab="response" aria-selected="false">response</button>
+                    <button type="button" data-tab="gateway" aria-selected="false">gateway</button>
+                  </div>
+                  <span class="console-title">runecord-server</span>
+                </div>
+
+                <div data-panel-group="hero-console">
+                  <div class="console-panel" data-panel="request">
+                    <pre><code><span class="tok-c"># is the server up?</span>
+<span class="tok-p">$</span> curl http://127.0.0.1:47800/api/version
+
+<span class="tok-c"># create a bot with a human session</span>
+<span class="tok-p">$</span> curl -X POST http://127.0.0.1:47800/api/bots \
+  -H <span class="tok-s">"Authorization: Bearer $SESSION"</span> \
+  -H <span class="tok-s">"Content-Type: application/json"</span> \
+  -d <span class="tok-s">'{"name":"Runebot","guild_id":1}'</span></code></pre>
+                  </div>
+
+                  <div class="console-panel" data-panel="response" hidden>
+                    <pre><code>{
+  <span class="tok-p">"bot"</span>: {
+    <span class="tok-p">"id"</span>: <span class="tok-n">42</span>,
+    <span class="tok-p">"username"</span>: <span class="tok-s">"runebot"</span>,
+    <span class="tok-p">"display_name"</span>: <span class="tok-s">"Runebot"</span>,
+    <span class="tok-p">"is_bot"</span>: <span class="tok-b">true</span>
+  },
+  <span class="tok-p">"token"</span>: <span class="tok-s">"rcbot.9f2c…"</span>  <span class="tok-c">// shown once</span>
+}</code></pre>
+                  </div>
+
+                  <div class="console-panel" data-panel="gateway" hidden>
+                    <pre><code>{
+  <span class="tok-p">"op"</span>: <span class="tok-s">"message_create"</span>,
+  <span class="tok-p">"d"</span>: {
+    <span class="tok-p">"id"</span>: <span class="tok-n">9081</span>,
+    <span class="tok-p">"channel_id"</span>: <span class="tok-n">12</span>,
+    <span class="tok-p">"author"</span>: { <span class="tok-p">"id"</span>: <span class="tok-n">7</span>, <span class="tok-p">"username"</span>: <span class="tok-s">"maya"</span> },
+    <span class="tok-p">"content"</span>: <span class="tok-s">"shipped it."</span>
+  }
+}</code></pre>
+                  </div>
+                </div>
+              </div>
+
+              <div class="hero-float">
+                <span class="dot"></span>
+                <span>server listening</span>
+                <code>127.0.0.1:47800</code>
+              </div>
+            </div>
+          </div>
+
+          <div class="portal-stats">
+            <div><strong>120+</strong><span>native endpoints</span></div>
+            <div><strong>30</strong><span>gateway events</span></div>
+            <div><strong>5 min</strong><span>session resume</span></div>
+            <div><strong>AES-256</strong><span>at rest</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="portal-section alt" id="platform">
+        <div class="wrap">
+          <header class="section-head">
+            <p class="kicker">The platform</p>
+            <h2>The API surface.</h2>
+            <p class="section-lede">The same API that powers the Runecord client is available to your bots, tools and integrations. No separate developer server, no mock data.</p>
+          </header>
+
+          <div class="card-grid">
+            <a class="card" href="api-reference.html">
+              <span class="card-ico"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-api"/></svg></span>
+              <h3>HTTP API</h3>
+              <p>Guilds, channels, messages, roles, members and uploads. Session tokens for people, bot tokens for automation.</p>
+              <span class="card-link">Browse endpoints <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-arrow"/></svg></span>
+            </a>
+
+            <a class="card" href="gateway.html">
+              <span class="card-ico"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-bolt"/></svg></span>
+              <h3>Realtime gateway</h3>
+              <p>WebSocket events with a compact native envelope, plus a Discord-compatible gateway with intents and resume.</p>
+              <span class="card-link">Read the gateway <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-arrow"/></svg></span>
+            </a>
+
+            <a class="card" href="bots.html">
+              <span class="card-ico"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-bot"/></svg></span>
+              <h3>Bot accounts</h3>
+              <p>Bots are normal users with <code>is_bot</code> set, so permissions, mentions and message authors work unchanged.</p>
+              <span class="card-link">Create a bot <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-arrow"/></svg></span>
+            </a>
+
+            <a class="card" href="bots.html#interactions">
+              <span class="card-ico"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-puzzle"/></svg></span>
+              <h3>Apps &amp; commands</h3>
+              <p>Applications, install links, slash-style commands and interaction callbacks, all backed by a bot account.</p>
+              <span class="card-link">Build an app <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-arrow"/></svg></span>
+            </a>
+
+            <a class="card" href="bots.html#webhooks">
+              <span class="card-ico"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-webhook"/></svg></span>
+              <h3>Webhooks</h3>
+              <p>Post into a channel with a tokenized webhook URL. No session or gateway connection required.</p>
+              <span class="card-link">Send a webhook <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-arrow"/></svg></span>
+            </a>
+
+            <a class="card" href="discord-compat.html">
+              <span class="card-ico"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-globe"/></svg></span>
+              <h3>Discord-compatible API</h3>
+              <p>Point existing tooling at <code>/api/v1</code>. String IDs, nested authors, ISO timestamps and Discord error codes.</p>
+              <span class="card-link">See the compatibility layer <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-arrow"/></svg></span>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section class="portal-section">
+        <div class="wrap">
+          <header class="section-head">
+            <p class="kicker">Quick start</p>
+            <h2>Three calls to a live bot.</h2>
+            <p class="section-lede">Three calls and one WebSocket. The server ships with a demo seed for local testing, so there is data to play with immediately.</p>
+          </header>
+
+          <div class="step-grid">
+            <article class="step">
+              <span class="step-num">01</span>
+              <h3>Run the server</h3>
+              <p>Start the Rust backend on loopback. It creates and encrypts the database on first launch.</p>
+              <code>runecord-server --data data</code>
+            </article>
+            <article class="step">
+              <span class="step-num">02</span>
+              <h3>Create a bot</h3>
+              <p>Log in as a human, then create a bot. The returned token is shown exactly once.</p>
+              <code>POST /api/bots</code>
+            </article>
+            <article class="step">
+              <span class="step-num">03</span>
+              <h3>Connect</h3>
+              <p>Send <code>Authorization: Bot rcbot.…</code> to the HTTP API or open the gateway for events.</p>
+              <code>GET /gateway</code>
+            </article>
+          </div>
+
+          <div class="callout is-tip">
+            <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-info"/></svg>
+            <div>
+              <strong>Demo accounts are available locally</strong>
+              <p>Fresh databases seed <code>nova</code>, <code>maya</code>, <code>leo</code>, <code>sam</code>, <code>ana</code>, <code>priya</code> and <code>tom</code> with the password <code>runecord</code>. Pass <code>--no-demo</code> for a public deployment.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="portal-section alt">
+        <div class="wrap split">
+          <div class="split-head">
+            <p class="kicker">Compatibility</p>
+            <h2>Native JSON. Discord shapes.</h2>
+            <p>Use the native API when you want compact payloads and integer IDs. Use <code>/api/v1</code> when you want Discord-shaped objects, string snowflakes and existing libraries to feel at home.</p>
+            <ul class="check-list">
+              <li><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-check"/></svg> Same server, same auth, same permissions</li>
+              <li><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-check"/></svg> String IDs and ISO timestamps on <code>/api/v1</code></li>
+              <li><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-check"/></svg> Discord error codes such as <code>50001 Missing Access</code></li>
+              <li><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-check"/></svg> Discord-style gateway at <code>/gateway/v1</code></li>
+            </ul>
+            <div class="hero-actions">
+              <a class="btn btn-ghost" href="discord-compat.html">Explore compatibility <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-arrow"/></svg></a>
+            </div>
+          </div>
+
+          <div class="compat-code">
+            <div class="code">
+              <div class="code-top">
+                <span class="code-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="code-lang">http</span>
+                <button class="copy-btn" type="button" data-copy="GET /api/channels/12/messages
+Authorization: Bearer &lt;session&gt;
+
+GET /api/v1/channels/12/messages
+Authorization: Bot rcbot.…">
+                  <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-copy"/></svg>
+                  <span class="copy-label">Copy</span>
+                </button>
+              </div>
+              <pre><code><span class="tok-c"># native — integer IDs, compact JSON</span>
+<span class="tok-b">GET</span> /api/channels/<span class="tok-n">12</span>/messages
+<span class="tok-p">Authorization</span>: <span class="tok-s">Bearer &lt;session&gt;</span>
+
+<span class="tok-c"># Discord-compatible — string IDs, Discord shapes</span>
+<span class="tok-b">GET</span> /api/v1/channels/<span class="tok-n">12</span>/messages
+<span class="tok-p">Authorization</span>: <span class="tok-s">Bot rcbot.…</span></code></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="portal-section">
+        <div class="wrap">
+          <header class="section-head">
+            <p class="kicker">Under the hood</p>
+            <h2>Same server. Same permissions.</h2>
+            <p class="section-lede">The developer surface is the production surface. Every route enforces permissions, rate limits and the same storage rules as the client.</p>
+          </header>
+
+          <div class="card-grid">
+            <article class="card">
+              <span class="card-ico"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-lock"/></svg></span>
+              <h3>Encrypted at rest</h3>
+              <p>The database and CDN uploads are sealed with AES-256-GCM. Tokens are stored as SHA-256 hashes, not plaintext.</p>
+            </article>
+            <article class="card">
+              <span class="card-ico"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-shield"/></svg></span>
+              <h3>Permissions everywhere</h3>
+              <p>Base permissions, channel overwrites, role hierarchy, timeouts and audit logs apply to bots exactly as they do to people.</p>
+            </article>
+            <article class="card">
+              <span class="card-ico"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-server"/></svg></span>
+              <h3>Local by default</h3>
+              <p>SQLite in memory, encrypted flushes, zero external caches. Self-host on one box or put a TLS proxy in front of it.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="cta-section">
+        <div class="wrap">
+          <div class="cta-card">
+            <div class="cta-glow" aria-hidden="true"></div>
+            <h2>Start with the server.</h2>
+            <p>Start with the quick start, then keep the reference open. Both sites are static, the server is local, and the source is on GitHub.</p>
+            <div class="cta-actions">
+              <a class="btn btn-primary" href="getting-started.html">Read the quick start <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-arrow"/></svg></a>
+              <a class="btn btn-ghost" href="https://github.com/CrauxZahard/Runecord-backend" target="_blank" rel="noopener">
+                <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-github"/></svg>
+                Backend repository
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="site-foot">
+        <div class="wrap foot-grid">
+          <div class="foot-brand">
+            <a class="brand" href="index.html" aria-label="Runecord Developers home">
+              <img src="assets/img/logo.svg" width="32" height="32" alt="">
+              <span>Runecord</span>
+            </a>
+            <p>A local-first chat platform with a developer API. Built in Rust, self-hosted on your terms.</p>
+          </div>
+          <div class="foot-col">
+            <h4>Docs</h4>
+            <a href="getting-started.html">Getting started</a>
+            <a href="authentication.html">Authentication</a>
+            <a href="api-reference.html">API reference</a>
+            <a href="gateway.html">Gateway</a>
+          </div>
+          <div class="foot-col">
+            <h4>Build</h4>
+            <a href="bots.html">Bots &amp; apps</a>
+            <a href="bots.html#webhooks">Webhooks</a>
+            <a href="bots.html#interactions">Interactions</a>
+            <a href="discord-compat.html">Discord-compatible API</a>
+          </div>
+          <div class="foot-col">
+            <h4>Project</h4>
+            <a href="../Runecord/">Runecord client</a>
+            <a href="https://github.com/CrauxZahard/Runecord" target="_blank" rel="noopener">Client source</a>
+            <a href="https://github.com/CrauxZahard/Runecord-backend" target="_blank" rel="noopener">Backend source</a>
+            <a href="#main">Back to top</a>
+          </div>
+        </div>
+        <div class="wrap foot-base">
+          <span>© <span id="year">2026</span> Runecord · API v0.1.0</span>
+          <span>Not affiliated with Discord Inc.</span>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <dialog class="search-dialog" id="search-dialog" aria-label="Search documentation">
+    <div class="search-top">
+      <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-search"/></svg>
+      <input id="search-input" type="search" placeholder="Search docs, endpoints, events…" autocomplete="off" spellcheck="false">
+      <button class="search-close" type="button" aria-label="Close search"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-close"/></svg></button>
+    </div>
+    <div class="search-results" id="search-results"></div>
+    <div class="search-foot">
+      <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+      <span><kbd>↵</kbd> open</span>
+      <span><kbd>esc</kbd> close</span>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="assets/js/api-data.js"></script>
+  <script src="assets/js/site.js"></script>
+</body>
+</html>
+
+

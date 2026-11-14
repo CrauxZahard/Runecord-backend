@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gateway — Runecord Developers</title>
+  <meta name="description" content="Runecord WebSocket gateway: native events, commands, heartbeats, intents and the Discord-compatible /gateway/v1 handshake.">
+  <meta name="theme-color" content="#020617">
+  <link rel="canonical" href="https://crauxzahard.github.io/Runecord-backend/gateway.html">
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/img/icon-180.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem('runecord-docs-theme') === 'light') {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="index.html" aria-label="Runecord Developers home">
+        <img src="assets/img/logo.svg" width="34" height="34" alt="">
+        <span>Runecord</span>
+        <span class="brand-badge">Developers</span>
+      </a>
+      <nav class="topnav" aria-label="Primary navigation">
+        <a href="getting-started.html">Docs</a>
+        <a href="api-reference.html">API</a>
+        <a href="gateway.html">Gateway</a>
+        <a href="bots.html">Bots</a>
+        <a href="discord-compat.html">Discord API</a>
+      </nav>
+      <div class="top-actions">
+        <button class="search-trigger" type="button" data-search-open aria-label="Search documentation">
+          <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-search"/></svg>
+          <span>Search docs</span><kbd>⌘K</kbd>
+        </button>
+        <button class="icon-btn theme-toggle" type="button" aria-label="Switch to light theme" title="Switch theme">
+          <svg class="icon icon-sun" aria-hidden="true"><use href="assets/img/icons.svg#i-sun"/></svg>
+          <svg class="icon icon-moon" aria-hidden="true"><use href="assets/img/icons.svg#i-moon"/></svg>
+        </button>
+        <a class="icon-btn" href="https://github.com/CrauxZahard/Runecord-backend" target="_blank" rel="noopener" aria-label="Backend repository on GitHub" title="Backend repository">
+          <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-github"/></svg>
+        </a>
+        <button class="icon-btn menu-btn" type="button" aria-label="Open documentation menu" aria-expanded="false" aria-controls="sidebar">
+          <svg class="icon menu-open" aria-hidden="true"><use href="assets/img/icons.svg#i-menu"/></svg>
+          <svg class="icon menu-close" aria-hidden="true"><use href="assets/img/icons.svg#i-close"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="docs-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Documentation navigation">
+      <div class="side-group">
+        <p class="side-label">Start here</p>
+        <a class="side-link" href="index.html">Overview</a>
+        <a class="side-link" href="getting-started.html">Getting started</a>
+        <a class="side-link" href="authentication.html">Authentication</a>
+      </div>
+      <div class="side-group">
+        <p class="side-label">Reference</p>
+        <a class="side-link" href="api-reference.html">HTTP API</a>
+        <a class="side-link" href="gateway.html">Gateway</a>
+        <a class="side-link" href="discord-compat.html">Discord-compatible API</a>
+      </div>
+      <div class="side-group">
+        <p class="side-label">Build</p>
+        <a class="side-link" href="bots.html">Bots &amp; apps</a>
+        <a class="side-link" href="bots.html#webhooks">Webhooks</a>
+        <a class="side-link" href="bots.html#interactions">Interactions</a>
+      </div>
+      <div class="side-group">
+        <p class="side-label">More</p>
+        <a class="side-link" href="../Runecord/">Runecord client</a>
+        <a class="side-link" href="https://github.com/CrauxZahard/Runecord-backend" target="_blank" rel="noopener">
+          Backend source
+          <svg class="icon ext" aria-hidden="true"><use href="assets/img/icons.svg#i-external"/></svg>
+        </a>
+      </div>
+      <div class="side-foot">
+        <div class="status-line"><span class="status-dot"></span> Server v0.1.0 · local</div>
+        <code>127.0.0.1:47800</code>
+      </div>
+    </aside>
+    <div class="sidebar-backdrop"></div>
+
+    <main class="doc-main" id="main">
+      <div class="doc-grid">
+        <article class="doc-content">
+          <p class="doc-eyebrow">Reference</p>
+          <h1>Gateway.</h1>
+          <p class="doc-lede">Runecord pushes live changes over WebSockets. The native gateway is compact and typed; <code>/gateway/v1</code> implements the Discord handshake if you want existing tooling to connect.</p>
+
+          <div class="callout is-info">
+            <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-info"/></svg>
+            <div>
+              <strong>Two gateways, one event bus</strong>
+              <p>Both endpoints share the same broadcast stream. The native gateway uses <code>{ op, d }</code>; the compatibility gateway wraps the same data in Discord dispatches with sequence numbers and resume.</p>
+            </div>
+          </div>
+
+          <h2 id="endpoints">Endpoints</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Endpoint</th><th>Protocol</th><th>Auth</th></tr></thead>
+              <tbody>
+                <tr><td><code>ws://127.0.0.1:47800/gateway</code></td><td>Native <code>{ op, d }</code></td><td><code>Authorization: Bot …</code> or <code>Bearer …</code></td></tr>
+                <tr><td><code>ws://127.0.0.1:47800/gateway/v1</code></td><td>Discord-style opcodes</td><td><code>IDENTIFY</code> token</td></tr>
+                <tr><td><code>ws://127.0.0.1:47800/voice</code></td><td>Voice signalling</td><td><code>Authorization</code> header</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="native">Native gateway</h2>
+          <p>Connect with a bot or session token in the <code>Authorization</code> header. The first frame is <code>ready</code> with the bootstrap payload, then events arrive as <code>{ "op": "message_create", "d": { … } }</code>.</p>
+
+          <div class="code no-top">
+            <pre><code><span class="tok-p">GET</span> ws://127.0.0.1:47800/gateway
+<span class="tok-p">Authorization</span>: <span class="tok-s">Bot rcbot.5d41402abc4b…</span></code></pre>
+          </div>
+
+          <h3 id="native-commands">Client commands</h3>
+          <p>Send JSON frames to narrow the subscription or keep the socket alive. Unknown operations are ignored.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Frame</th><th>Effect</th></tr></thead>
+              <tbody>
+                <tr><td><code>{"op":"subscribe","d":{"channel_id":12}}</code></td><td>Limit visible events to one channel</td></tr>
+                <tr><td><code>{"op":"typing","d":{"channel_id":12}}</code></td><td>Broadcast a typing indicator</td></tr>
+                <tr><td><code>{"op":"heartbeat"}</code></td><td>No-op keepalive</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="native-events">Events</h3>
+          <p>Event names are snake_case in the native envelope. Visibility is computed per connection, so a bot only receives events for channels, guilds and relationships it can see.</p>
+
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Event</th><th>Payload</th></tr></thead>
+              <tbody>
+                <tr><td><code>ready</code></td><td>Bootstrap: user, guilds, DMs and read state</td></tr>
+                <tr><td><code>ready_check</code></td><td>Server readiness probe</td></tr>
+                <tr><td><code>message_create</code></td><td>Full message object</td></tr>
+                <tr><td><code>message_update</code></td><td>Updated message object</td></tr>
+                <tr><td><code>message_delete</code></td><td><code>channel_id</code>, <code>message_id</code></td></tr>
+                <tr><td><code>reaction_update</code></td><td>Message with the new reaction totals</td></tr>
+                <tr><td><code>typing_start</code></td><td><code>channel_id</code>, <code>user_id</code>, <code>until_ms</code></td></tr>
+                <tr><td><code>presence_update</code></td><td><code>user_id</code>, <code>status</code></td></tr>
+                <tr><td><code>channel_create</code></td><td>Channel object</td></tr>
+                <tr><td><code>channel_update</code></td><td>Channel object</td></tr>
+                <tr><td><code>channel_delete</code></td><td><code>channel_id</code>, optional <code>guild_id</code></td></tr>
+                <tr><td><code>guild_create</code></td><td>Guild object</td></tr>
+                <tr><td><code>guild_update</code></td><td>Guild object</td></tr>
+                <tr><td><code>guild_delete</code></td><td><code>guild_id</code></td></tr>
+                <tr><td><code>role_create</code></td><td>Role object</td></tr>
+                <tr><td><code>role_update</code></td><td>Role object</td></tr>
+                <tr><td><code>role_delete</code></td><td><code>guild_id</code>, <code>role_id</code></td></tr>
+                <tr><td><code>member_update</code></td><td>Member object</td></tr>
+                <tr><td><code>member_remove</code></td><td><code>guild_id</code>, <code>user_id</code></td></tr>
+                <tr><td><code>member_count_update</code></td><td><code>guild_id</code>, <code>count</code></td></tr>
+                <tr><td><code>dm_create</code></td><td>DM channel object</td></tr>
+                <tr><td><code>dm_update</code></td><td>DM channel object</td></tr>
+                <tr><td><code>dm_remove</code></td><td><code>channel_id</code>, <code>user_id</code></td></tr>
+                <tr><td><code>guild_members</code></td><td><code>guild_id</code>, member page</td></tr>
+                <tr><td><code>relationship_update</code></td><td>Friend or blocked-user relationship</td></tr>
+                <tr><td><code>relationship_remove</code></td><td><code>user_id</code></td></tr>
+                <tr><td><code>read_update</code></td><td><code>channel_id</code>, <code>last_read_id</code>, <code>mention_count</code></td></tr>
+                <tr><td><code>user_update</code></td><td>Updated user profile</td></tr>
+                <tr><td><code>voice_state_update</code></td><td>Voice state for a guild member</td></tr>
+                <tr><td><code>interaction_create</code></td><td><code>app_id</code>, interaction payload</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="native-example">Native client example</h3>
+          <p>Node's <code>ws</code> package lets you set the authorization header. Browser WebSockets cannot; use the compatibility gateway from a browser.</p>
+
+          <div class="code">
+            <div class="code-top">
+              <span class="code-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="code-lang">js</span>
+              <button class="copy-btn" type="button"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-copy"/></svg><span class="copy-label">Copy</span></button>
+            </div>
+            <pre><code><span class="tok-k">import</span> WebSocket <span class="tok-k">from</span> <span class="tok-s">"ws"</span>;
+
+<span class="tok-k">const</span> ws = <span class="tok-k">new</span> <span class="tok-f">WebSocket</span>(<span class="tok-s">"ws://127.0.0.1:47800/gateway"</span>, {
+  headers: { Authorization: <span class="tok-s">`Bot ${process.env.BOT_TOKEN}`</span> },
+});
+
+ws.<span class="tok-f">on</span>(<span class="tok-s">"message"</span>, (raw) => {
+  <span class="tok-k">const</span> event = <span class="tok-f">JSON.parse</span>(raw);
+
+  <span class="tok-k">if</span> (event.op === <span class="tok-s">"ready"</span>) {
+    ws.<span class="tok-f">send</span>(<span class="tok-f">JSON.stringify</span>({ op: <span class="tok-s">"subscribe"</span>, d: { channel_id: <span class="tok-n">12</span> } }));
+  }
+
+  <span class="tok-k">if</span> (event.op === <span class="tok-s">"message_create"</span>) {
+    console.<span class="tok-f">log</span>(event.d.author.username, event.d.content);
+  }
+});</code></pre>
+          </div>
+
+          <h2 id="discord-gateway">Discord-compatible gateway</h2>
+          <p><code>/gateway/v1</code> opens with <code>HELLO</code>, accepts <code>IDENTIFY</code> or <code>RESUME</code>, and emits Discord-shaped <code>DISPATCH</code> frames with an incrementing sequence number.</p>
+
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Op</th><th>Direction</th><th>Payload</th></tr></thead>
+              <tbody>
+                <tr><td><code>10</code> HELLO</td><td>Server → client</td><td><code>{ heartbeat_interval: 41250 }</code></td></tr>
+                <tr><td><code>2</code> IDENTIFY</td><td>Client → server</td><td><code>{ token: "Bot rcbot.…", intents }</code></td></tr>
+                <tr><td><code>1</code> HEARTBEAT</td><td>Client → server</td><td>Sequence number or <code>null</code>; replies with <code>11</code></td></tr>
+                <tr><td><code>11</code> HEARTBEAT_ACK</td><td>Server → client</td><td><code>null</code></td></tr>
+                <tr><td><code>6</code> RESUME</td><td>Client → server</td><td><code>{ token, session_id, seq }</code>, then a replay</td></tr>
+                <tr><td><code>0</code> DISPATCH</td><td>Server → client</td><td><code>{ t, s, d }</code></td></tr>
+                <tr><td><code>9</code> INVALID_SESSION</td><td>Server → client</td><td><code>false</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="intents">Intents</h3>
+          <p>Intents are a bitfield. Omit <code>intents</code> or send <code>0</code> to receive everything. <code>MESSAGE_CONTENT</code> gates content in guild messages; direct messages keep their content.</p>
+
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Intent</th><th>Bit</th><th>Value</th><th>Gates</th></tr></thead>
+              <tbody>
+                <tr><td><code>GUILDS</code></td><td>0</td><td>1</td><td>Guild, channel, role and member events</td></tr>
+                <tr><td><code>GUILD_MEMBERS</code></td><td>1</td><td>2</td><td>Member updates and member pages</td></tr>
+                <tr><td><code>GUILD_PRESENCES</code></td><td>8</td><td>256</td><td>Presence updates</td></tr>
+                <tr><td><code>GUILD_MESSAGES</code></td><td>9</td><td>512</td><td>Guild message, typing and reaction events</td></tr>
+                <tr><td><code>DIRECT_MESSAGES</code></td><td>12</td><td>4096</td><td>DM message and typing events</td></tr>
+                <tr><td><code>MESSAGE_CONTENT</code></td><td>15</td><td>32768</td><td>Message content in guild channels</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 id="resume">Heartbeats and resume</h3>
+          <p>Send op <code>1</code> every 41.25 seconds. The server replies with op <code>11</code>. Sessions live in memory for five minutes and keep a replay buffer of 1,024 events, so a reconnect can replay what was missed.</p>
+
+          <div class="code no-top">
+            <pre><code><span class="tok-p">setInterval</span>(() => socket.<span class="tok-f">send</span>(<span class="tok-f">JSON.stringify</span>({ op: <span class="tok-n">1</span>, d: <span class="tok-b">null</span> })), <span class="tok-n">41250</span>);</code></pre>
+          </div>
+
+          <h3 id="browser-example">Browser example</h3>
+          <div class="code">
+            <div class="code-top">
+              <span class="code-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="code-lang">js</span>
+              <button class="copy-btn" type="button"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-copy"/></svg><span class="copy-label">Copy</span></button>
+            </div>
+            <pre><code><span class="tok-k">const</span> socket = <span class="tok-k">new</span> <span class="tok-f">WebSocket</span>(<span class="tok-s">"ws://127.0.0.1:47800/gateway/v1"</span>);
+
+socket.<span class="tok-f">addEventListener</span>(<span class="tok-s">"open"</span>, () => {
+  socket.<span class="tok-f">send</span>(<span class="tok-f">JSON.stringify</span>({
+    op: <span class="tok-n">2</span>,
+    d: {
+      token: <span class="tok-s">"Bot rcbot.…"</span>, <span class="tok-c">// keep this server-side</span>
+      intents: <span class="tok-n">37379</span>,
+    },
+  }));
+});
+
+socket.<span class="tok-f">addEventListener</span>(<span class="tok-s">"message"</span>, (event) => {
+  <span class="tok-k">const</span> payload = <span class="tok-f">JSON.parse</span>(event.data);
+  <span class="tok-k">if</span> (payload.t === <span class="tok-s">"MESSAGE_CREATE"</span>) {
+    console.<span class="tok-f">log</span>(payload.d.content);
+  }
+});</code></pre>
+          </div>
+
+          <div class="callout is-warn">
+            <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-warning"/></svg>
+            <div>
+              <strong>Do not expose bot tokens in a browser</strong>
+              <p>The example shows the handshake shape. A browser bundle is public; proxy the socket through your own server and inject the token there.</p>
+            </div>
+          </div>
+
+          <h2 id="voice">Voice signalling</h2>
+          <p>Voice uses a separate WebSocket at <code>/voice</code> with the same authorization header. Update presence with <code>POST /api/voice</code> or send a voice payload through the native gateway. The client handles media transport; the server relays signalling and participant state.</p>
+        </article>
+
+        <aside class="toc" aria-label="On this page">
+          <p class="toc-label">On this page</p>
+          <nav class="toc-list" id="toc-list"></nav>
+        </aside>
+      </div>
+
+      <footer class="doc-foot">
+        <div class="doc-foot-inner">
+          <span>© <span id="year">2026</span> Runecord · API v0.1.0</span>
+          <div class="doc-foot-links">
+            <a href="../Runecord/">Client site</a>
+            <a href="https://github.com/CrauxZahard/Runecord-backend" target="_blank" rel="noopener">GitHub</a>
+            <a href="api-reference.html">API reference</a>
+          </div>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <dialog class="search-dialog" id="search-dialog" aria-label="Search documentation">
+    <div class="search-top">
+      <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-search"/></svg>
+      <input id="search-input" type="search" placeholder="Search docs, endpoints, events…" autocomplete="off" spellcheck="false">
+      <button class="search-close" type="button" aria-label="Close search"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-close"/></svg></button>
+    </div>
+    <div class="search-results" id="search-results"></div>
+    <div class="search-foot">
+      <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+      <span><kbd>↵</kbd> open</span>
+      <span><kbd>esc</kbd> close</span>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="assets/js/api-data.js"></script>
+  <script src="assets/js/site.js"></script>
+</body>
+</html>
+

@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Discord-compatible API — Runecord Developers</title>
+  <meta name="description" content="Use the Discord-shaped /api/v1 surface and /gateway/v1 gateway with Runecord.">
+  <meta name="theme-color" content="#020617">
+  <link rel="canonical" href="https://crauxzahard.github.io/Runecord-backend/discord-compat.html">
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/img/icon-180.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem('runecord-docs-theme') === 'light') {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="index.html" aria-label="Runecord Developers home">
+        <img src="assets/img/logo.svg" width="34" height="34" alt="">
+        <span>Runecord</span>
+        <span class="brand-badge">Developers</span>
+      </a>
+      <nav class="topnav" aria-label="Primary navigation">
+        <a href="getting-started.html">Docs</a>
+        <a href="api-reference.html">API</a>
+        <a href="gateway.html">Gateway</a>
+        <a href="bots.html">Bots</a>
+        <a href="discord-compat.html">Discord API</a>
+      </nav>
+      <div class="top-actions">
+        <button class="search-trigger" type="button" data-search-open aria-label="Search documentation">
+          <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-search"/></svg>
+          <span>Search docs</span><kbd>⌘K</kbd>
+        </button>
+        <button class="icon-btn theme-toggle" type="button" aria-label="Switch to light theme" title="Switch theme">
+          <svg class="icon icon-sun" aria-hidden="true"><use href="assets/img/icons.svg#i-sun"/></svg>
+          <svg class="icon icon-moon" aria-hidden="true"><use href="assets/img/icons.svg#i-moon"/></svg>
+        </button>
+        <a class="icon-btn" href="https://github.com/CrauxZahard/Runecord-backend" target="_blank" rel="noopener" aria-label="Backend repository on GitHub" title="Backend repository">
+          <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-github"/></svg>
+        </a>
+        <button class="icon-btn menu-btn" type="button" aria-label="Open documentation menu" aria-expanded="false" aria-controls="sidebar">
+          <svg class="icon menu-open" aria-hidden="true"><use href="assets/img/icons.svg#i-menu"/></svg>
+          <svg class="icon menu-close" aria-hidden="true"><use href="assets/img/icons.svg#i-close"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="docs-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Documentation navigation">
+      <div class="side-group">
+        <p class="side-label">Start here</p>
+        <a class="side-link" href="index.html">Overview</a>
+        <a class="side-link" href="getting-started.html">Getting started</a>
+        <a class="side-link" href="authentication.html">Authentication</a>
+      </div>
+      <div class="side-group">
+        <p class="side-label">Reference</p>
+        <a class="side-link" href="api-reference.html">HTTP API</a>
+        <a class="side-link" href="gateway.html">Gateway</a>
+        <a class="side-link" href="discord-compat.html">Discord-compatible API</a>
+      </div>
+      <div class="side-group">
+        <p class="side-label">Build</p>
+        <a class="side-link" href="bots.html">Bots &amp; apps</a>
+        <a class="side-link" href="bots.html#webhooks">Webhooks</a>
+        <a class="side-link" href="bots.html#interactions">Interactions</a>
+      </div>
+      <div class="side-group">
+        <p class="side-label">More</p>
+        <a class="side-link" href="../Runecord/">Runecord client</a>
+        <a class="side-link" href="https://github.com/CrauxZahard/Runecord-backend" target="_blank" rel="noopener">
+          Backend source
+          <svg class="icon ext" aria-hidden="true"><use href="assets/img/icons.svg#i-external"/></svg>
+        </a>
+      </div>
+      <div class="side-foot">
+        <div class="status-line"><span class="status-dot"></span> Server v0.1.0 · local</div>
+        <code>127.0.0.1:47800</code>
+      </div>
+    </aside>
+    <div class="sidebar-backdrop"></div>
+
+    <main class="doc-main" id="main">
+      <div class="doc-grid">
+        <article class="doc-content">
+          <p class="doc-eyebrow">Reference</p>
+          <h1>Discord-compatible API.</h1>
+          <p class="doc-lede">The same Runecord server exposes a Discord-shaped surface at <code>/api/v1</code>. String IDs, nested authors, ISO timestamps and Discord error codes, so existing libraries and habits have less to relearn.</p>
+
+          <div class="callout is-info">
+            <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-info"/></svg>
+            <div>
+              <strong>This is a compatibility layer, not Discord</strong>
+              <p>Requests still hit your local server and enforce Runecord permissions. Nothing is forwarded to Discord. The subset is intentionally smaller than the native API.</p>
+            </div>
+          </div>
+
+          <h2 id="base">Base path and auth</h2>
+          <p>Mounted alongside the native routes, the compatibility API lives under <code>/api/v1</code>. Authentication is unchanged: <code>Bot</code> for bot tokens and <code>Bearer</code> for human sessions.</p>
+
+          <div class="code no-top">
+            <pre><code><span class="tok-p">GET</span> http://127.0.0.1:47800/api/v1/users/@me
+<span class="tok-p">Authorization</span>: <span class="tok-s">Bot rcbot.5d41402abc4b…</span></code></pre>
+          </div>
+
+          <h2 id="shapes">Payload shapes</h2>
+          <p>IDs are strings, timestamps are ISO-8601, authors are nested inside messages, and reactions use an emoji object. Fields that are absent on a message in the native API may be filled with Discord defaults such as <code>type: 0</code>.</p>
+
+          <div class="code">
+            <div class="code-top">
+              <span class="code-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="code-lang">json</span>
+              <button class="copy-btn" type="button"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-copy"/></svg><span class="copy-label">Copy</span></button>
+            </div>
+            <pre><code>{
+  <span class="tok-p">"id"</span>: <span class="tok-s">"9081"</span>,
+  <span class="tok-p">"channel_id"</span>: <span class="tok-s">"12"</span>,
+  <span class="tok-p">"author"</span>: {
+    <span class="tok-p">"id"</span>: <span class="tok-s">"7"</span>,
+    <span class="tok-p">"username"</span>: <span class="tok-s">"maya"</span>,
+    <span class="tok-p">"global_name"</span>: <span class="tok-s">"Maya Chen"</span>
+  },
+  <span class="tok-p">"content"</span>: <span class="tok-s">"shipped it."</span>,
+  <span class="tok-p">"timestamp"</span>: <span class="tok-s">"2026-11-14T12:00:00.123Z"</span>,
+  <span class="tok-p">"type"</span>: <span class="tok-n">0</span>,
+  <span class="tok-p">"reactions"</span>: [
+    { <span class="tok-p">"emoji"</span>: { <span class="tok-p">"id"</span>: <span class="tok-b">null</span>, <span class="tok-p">"name"</span>: <span class="tok-s">"🔥"</span> }, <span class="tok-p">"count"</span>: <span class="tok-n">3</span>, <span class="tok-p">"me"</span>: <span class="tok-b">false</span> }
+  ]
+}</code></pre>
+          </div>
+
+          <p>Compare the native message: integer IDs, a flat author reference and Unix milliseconds. Both endpoints read and write the same rows.</p>
+
+          <div class="code no-top">
+            <pre><code>{ <span class="tok-p">"id"</span>: <span class="tok-n">9081</span>, <span class="tok-p">"channel_id"</span>: <span class="tok-n">12</span>, <span class="tok-p">"author"</span>: { <span class="tok-p">"id"</span>: <span class="tok-n">7</span> }, <span class="tok-p">"timestamp"</span>: <span class="tok-n">1794691200123</span> }</code></pre>
+          </div>
+
+          <h2 id="endpoints">Endpoints</h2>
+          <p>This is the complete compatibility surface. Native-only resources such as applications, audit logs, scheduled events and group-DM management stay on <code>/api/...</code>.</p>
+
+          <div id="v1-endpoints">
+            <p class="api-empty">Loading the compatibility index…</p>
+          </div>
+
+          <h2 id="errors">Error codes</h2>
+          <p>Errors use the Discord envelope and a small set of Discord codes. The HTTP status still carries the category.</p>
+
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Code</th><th>Message</th><th>Meaning</th></tr></thead>
+              <tbody>
+                <tr><td><code>10003</code></td><td>Unknown Channel</td><td>The channel does not exist or is not visible</td></tr>
+                <tr><td><code>10008</code></td><td>Unknown Message</td><td>The message does not exist or was deleted</td></tr>
+                <tr><td><code>50001</code></td><td>Missing Access</td><td>The token cannot see this resource</td></tr>
+                <tr><td><code>50035</code></td><td>Invalid Form Body</td><td>A required field is missing or malformed</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="code no-top">
+            <pre><code>{ <span class="tok-p">"code"</span>: <span class="tok-n">50001</span>, <span class="tok-p">"message"</span>: <span class="tok-s">"Missing Access"</span> }</code></pre>
+          </div>
+
+          <h2 id="gateway">Gateway</h2>
+          <p>The HTTP surface has a matching gateway at <code>/gateway/v1</code>. It speaks the Discord handshake: <code>HELLO</code>, <code>IDENTIFY</code>, <code>HEARTBEAT</code>, <code>RESUME</code>, and <code>DISPATCH</code> frames with sequence numbers.</p>
+
+          <div class="code no-top">
+            <pre><code><span class="tok-p">GET</span> ws://127.0.0.1:47800/gateway/v1
+<span class="tok-c"># send IDENTIFY after HELLO</span>
+{ <span class="tok-p">"op"</span>: <span class="tok-n">2</span>, <span class="tok-p">"d"</span>: { <span class="tok-p">"token"</span>: <span class="tok-s">"Bot rcbot.…"</span>, <span class="tok-p">"intents"</span>: <span class="tok-n">37379</span> } }</code></pre>
+          </div>
+
+          <p>See <a href="gateway.html">Gateway</a> for the opcode table, intents, heartbeat interval and resume buffer.</p>
+
+          <h2 id="differences">Differences and limitations</h2>
+          <ul>
+            <li>The compatibility surface covers users, guilds, channels, messages, reactions, pins, typing and the gateway. It is not every native route.</li>
+            <li>DM create/update/remove events are not dispatched on the v1 gateway; use the native gateway for the full event set.</li>
+            <li>Message content in guild channels requires the <code>MESSAGE_CONTENT</code> intent. Direct messages are exempt.</li>
+            <li>Voice uses Runecord's native signalling; there is no Discord voice transport.</li>
+            <li>Snowflakes are stringified integers, not real Discord snowflakes. Do not parse timestamps out of them.</li>
+          </ul>
+
+          <h2 id="migration">Using existing tooling</h2>
+          <ol>
+            <li>Point the REST base URL at <code>http://127.0.0.1:47800/api/v1</code>.</li>
+            <li>Use a Runecord bot token with the <code>Bot</code> scheme.</li>
+            <li>Request the intents you need; omit them to receive everything.</li>
+            <li>Expect Runecord permissions and rate-limit buckets, not Discord's exact limits.</li>
+            <li>Fall back to the native API for applications, audit logs, events, group DMs and voice.</li>
+          </ol>
+
+          <div class="callout is-tip">
+            <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-info"/></svg>
+            <div>
+              <strong>Good fit for bridges and dashboards</strong>
+              <p>If an existing library only needs messages, channels and guilds, the compatibility layer usually works unchanged. If it depends on Discord-only features, keep it on the native API.</p>
+            </div>
+          </div>
+        </article>
+
+        <aside class="toc" aria-label="On this page">
+          <p class="toc-label">On this page</p>
+          <nav class="toc-list" id="toc-list"></nav>
+        </aside>
+      </div>
+
+      <footer class="doc-foot">
+        <div class="doc-foot-inner">
+          <span>© <span id="year">2026</span> Runecord · API v0.1.0</span>
+          <div class="doc-foot-links">
+            <a href="../Runecord/">Client site</a>
+            <a href="https://github.com/CrauxZahard/Runecord-backend" target="_blank" rel="noopener">GitHub</a>
+            <a href="api-reference.html">Native reference</a>
+          </div>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <dialog class="search-dialog" id="search-dialog" aria-label="Search documentation">
+    <div class="search-top">
+      <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-search"/></svg>
+      <input id="search-input" type="search" placeholder="Search docs, endpoints, events…" autocomplete="off" spellcheck="false">
+      <button class="search-close" type="button" aria-label="Close search"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-close"/></svg></button>
+    </div>
+    <div class="search-results" id="search-results"></div>
+    <div class="search-foot">
+      <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+      <span><kbd>↵</kbd> open</span>
+      <span><kbd>esc</kbd> close</span>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="assets/js/api-data.js"></script>
+  <script src="assets/js/site.js"></script>
+</body>
+</html>
+

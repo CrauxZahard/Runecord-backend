@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HTTP API reference — Runecord Developers</title>
+  <meta name="description" content="Filter every native Runecord HTTP endpoint by method, resource and auth type.">
+  <meta name="theme-color" content="#020617">
+  <link rel="canonical" href="https://crauxzahard.github.io/Runecord-backend/api-reference.html">
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/img/icon-180.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem('runecord-docs-theme') === 'light') {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="index.html" aria-label="Runecord Developers home">
+        <img src="assets/img/logo.svg" width="34" height="34" alt="">
+        <span>Runecord</span>
+        <span class="brand-badge">Developers</span>
+      </a>
+      <nav class="topnav" aria-label="Primary navigation">
+        <a href="getting-started.html">Docs</a>
+        <a href="api-reference.html">API</a>
+        <a href="gateway.html">Gateway</a>
+        <a href="bots.html">Bots</a>
+        <a href="discord-compat.html">Discord API</a>
+      </nav>
+      <div class="top-actions">
+        <button class="search-trigger" type="button" data-search-open aria-label="Search documentation">
+          <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-search"/></svg>
+          <span>Search docs</span><kbd>⌘K</kbd>
+        </button>
+        <button class="icon-btn theme-toggle" type="button" aria-label="Switch to light theme" title="Switch theme">
+          <svg class="icon icon-sun" aria-hidden="true"><use href="assets/img/icons.svg#i-sun"/></svg>
+          <svg class="icon icon-moon" aria-hidden="true"><use href="assets/img/icons.svg#i-moon"/></svg>
+        </button>
+        <a class="icon-btn" href="https://github.com/CrauxZahard/Runecord-backend" target="_blank" rel="noopener" aria-label="Backend repository on GitHub" title="Backend repository">
+          <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-github"/></svg>
+        </a>
+        <button class="icon-btn menu-btn" type="button" aria-label="Open documentation menu" aria-expanded="false" aria-controls="sidebar">
+          <svg class="icon menu-open" aria-hidden="true"><use href="assets/img/icons.svg#i-menu"/></svg>
+          <svg class="icon menu-close" aria-hidden="true"><use href="assets/img/icons.svg#i-close"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="docs-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Documentation navigation">
+      <div class="side-group">
+        <p class="side-label">Start here</p>
+        <a class="side-link" href="index.html">Overview</a>
+        <a class="side-link" href="getting-started.html">Getting started</a>
+        <a class="side-link" href="authentication.html">Authentication</a>
+      </div>
+      <div class="side-group">
+        <p class="side-label">Reference</p>
+        <a class="side-link" href="api-reference.html">HTTP API</a>
+        <a class="side-link" href="gateway.html">Gateway</a>
+        <a class="side-link" href="discord-compat.html">Discord-compatible API</a>
+      </div>
+      <div class="side-group">
+        <p class="side-label">Build</p>
+        <a class="side-link" href="bots.html">Bots &amp; apps</a>
+        <a class="side-link" href="bots.html#webhooks">Webhooks</a>
+        <a class="side-link" href="bots.html#interactions">Interactions</a>
+      </div>
+      <div class="side-group">
+        <p class="side-label">More</p>
+        <a class="side-link" href="../Runecord/">Runecord client</a>
+        <a class="side-link" href="https://github.com/CrauxZahard/Runecord-backend" target="_blank" rel="noopener">
+          Backend source
+          <svg class="icon ext" aria-hidden="true"><use href="assets/img/icons.svg#i-external"/></svg>
+        </a>
+      </div>
+      <div class="side-foot">
+        <div class="status-line"><span class="status-dot"></span> Server v0.1.0 · local</div>
+        <code>127.0.0.1:47800</code>
+      </div>
+    </aside>
+    <div class="sidebar-backdrop"></div>
+
+    <main class="doc-main" id="main">
+      <div class="doc-grid">
+        <article class="doc-content">
+          <p class="doc-eyebrow">Reference</p>
+          <h1>HTTP API reference.</h1>
+          <p class="doc-lede">Every native route, grouped by resource. Filter by name, path or method. All routes speak JSON and authenticate with a session or bot token.</p>
+
+          <div class="api-meta">
+            <div><span>Base URL</span><strong>http://127.0.0.1:47800</strong></div>
+            <div><span>Auth</span><strong>Bearer · Bot</strong></div>
+            <div><span>Version</span><strong>0.1.0</strong></div>
+          </div>
+
+          <div class="callout is-info">
+            <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-info"/></svg>
+            <div>
+              <strong>Looking for Discord-shaped payloads?</strong>
+              <p>The same server exposes a compatibility layer at <code>/api/v1</code> with string IDs, nested authors and Discord error codes. <a href="discord-compat.html">See the compatibility reference</a>.</p>
+            </div>
+          </div>
+
+          <div class="api-toolbar">
+            <label class="api-filter" for="api-filter">
+              <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-search"/></svg>
+              <input id="api-filter" type="search" placeholder="Filter routes, methods or resources…" autocomplete="off" spellcheck="false">
+              <span class="api-count" id="api-count">—</span>
+            </label>
+            <div class="api-chips" id="api-chips" aria-label="Filter by resource"></div>
+          </div>
+
+          <div id="api-groups">
+            <p class="api-empty">Loading the endpoint index…</p>
+          </div>
+
+          <h2 id="conventions">Conventions</h2>
+          <p><strong>IDs</strong> are signed 64-bit integers on the native API and appear as JSON numbers. The compatibility layer converts them to strings.</p>
+          <p><strong>Timestamps</strong> are Unix milliseconds. The compatibility layer returns ISO-8601 strings instead.</p>
+          <p><strong>Bodies</strong> are JSON with <code>Content-Type: application/json</code>, except uploads, which are multipart form data on the dedicated upload routes.</p>
+          <p><strong>Pagination</strong> for messages uses <code>before</code>, <code>after</code>, <code>around</code> and <code>limit</code> query parameters. Member pages use an offset or cursor as returned by the guild detail.</p>
+          <p><strong>Errors</strong> use the HTTP status plus a JSON body with an <code>error</code> string. See <a href="authentication.html#errors">Authentication → Errors</a> for the full table.</p>
+
+          <div class="callout is-tip">
+            <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-info"/></svg>
+            <div>
+              <strong>Tip: copy a path</strong>
+              <p>Hover a row and use the copy button to put the route on your clipboard. Filtering also accepts method names such as <code>POST</code> or resource names such as <code>webhook</code>.</p>
+            </div>
+          </div>
+        </article>
+
+        <aside class="toc" aria-label="On this page">
+          <p class="toc-label">On this page</p>
+          <nav class="toc-list" id="toc-list"></nav>
+        </aside>
+      </div>
+
+      <footer class="doc-foot">
+        <div class="doc-foot-inner">
+          <span>© <span id="year">2026</span> Runecord · API v0.1.0</span>
+          <div class="doc-foot-links">
+            <a href="../Runecord/">Client site</a>
+            <a href="https://github.com/CrauxZahard/Runecord-backend" target="_blank" rel="noopener">GitHub</a>
+            <a href="discord-compat.html">Discord-compatible API</a>
+          </div>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <dialog class="search-dialog" id="search-dialog" aria-label="Search documentation">
+    <div class="search-top">
+      <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-search"/></svg>
+      <input id="search-input" type="search" placeholder="Search docs, endpoints, events…" autocomplete="off" spellcheck="false">
+      <button class="search-close" type="button" aria-label="Close search"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-close"/></svg></button>
+    </div>
+    <div class="search-results" id="search-results"></div>
+    <div class="search-foot">
+      <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+      <span><kbd>↵</kbd> open</span>
+      <span><kbd>esc</kbd> close</span>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="assets/js/api-data.js"></script>
+  <script src="assets/js/site.js"></script>
+</body>
+</html>
+

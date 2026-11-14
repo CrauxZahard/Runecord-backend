@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Runecord icon">
+  <defs>
+    <linearGradient id="bg" x1="8" y1="6" x2="122" y2="124" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#081570"/>
+      <stop offset=".38" stop-color="#0a23c9"/>
+      <stop offset=".72" stop-color="#1448ff"/>
+      <stop offset="1" stop-color="#4fe0ff"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(100 26) rotate(128) scale(76)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4b86ff" stop-opacity=".9"/>
+      <stop offset="1" stop-color="#4b86ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="band" x1="19" y1="93" x2="114" y2="46" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22c8ff"/>
+      <stop offset=".48" stop-color="#57e6ff"/>
+      <stop offset="1" stop-color="#c6fbff"/>
+    </linearGradient>
+    <linearGradient id="bubble" x1="43" y1="30" x2="87" y2="101" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#d9d7ff"/>
+    </linearGradient>
+    <clipPath id="squircle">
+      <rect x="4" y="4" width="120" height="120" rx="30"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#squircle)">
+    <rect width="128" height="128" fill="url(#bg)"/>
+    <circle cx="98" cy="22" r="78" fill="url(#glow)"/>
+    <path d="M-12 104C12 78 14 24 54 9c28-11 51 0 86 15v112H-12Z" fill="#06105c" opacity=".58"/>
+    <path d="M-14 124c40-19 82-7 118-24 18-8 28-18 38-31v67H-14Z" fill="#2b6bff" opacity=".5"/>
+
+    <g transform="rotate(-6 64 64)">
+      <path d="M37 78 27 103l28-18Z" fill="url(#bubble)"/>
+      <ellipse cx="64" cy="59" rx="45" ry="30" fill="url(#bubble)"/>
+      <ellipse cx="49" cy="58" rx="4" ry="9.8" fill="#07156b" transform="rotate(-4 49 58)"/>
+      <ellipse cx="71" cy="55" rx="4" ry="9.8" fill="#07156b" transform="rotate(-4 71 55)"/>
+    </g>
+
+    <path d="M16 95c14 7 34 8 55 2 21-6 37-18 41-31 2-8-4-12-13-9" fill="none" stroke="url(#band)" stroke-width="9" stroke-linecap="round"/>
+
+    <path d="M104 20l2.3 7.6L114 30l-7.7 2.4L104 40l-2.3-7.6L94 30l7.7-2.4L104 20Z" fill="#fff"/>
+
+    <g fill="#5fe9ff">
+      <rect x="24" y="27" width="6" height="15" rx="3" transform="rotate(-28 24 27)"/>
+      <rect x="37" y="20" width="6" height="17" rx="3" transform="rotate(-20 37 20)"/>
+    </g>
+  </g>
+</svg>

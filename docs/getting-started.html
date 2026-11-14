@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Getting started — Runecord Developers</title>
+  <meta name="description" content="Run the Runecord backend locally, authenticate, create a bot, send a message and connect to the WebSocket gateway.">
+  <meta name="theme-color" content="#020617">
+  <link rel="canonical" href="https://crauxzahard.github.io/Runecord-backend/getting-started.html">
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/img/icon-180.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem('runecord-docs-theme') === 'light') {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="index.html" aria-label="Runecord Developers home">
+        <img src="assets/img/logo.svg" width="34" height="34" alt="">
+        <span>Runecord</span>
+        <span class="brand-badge">Developers</span>
+      </a>
+      <nav class="topnav" aria-label="Primary navigation">
+        <a href="getting-started.html">Docs</a>
+        <a href="api-reference.html">API</a>
+        <a href="gateway.html">Gateway</a>
+        <a href="bots.html">Bots</a>
+        <a href="discord-compat.html">Discord API</a>
+      </nav>
+      <div class="top-actions">
+        <button class="search-trigger" type="button" data-search-open aria-label="Search documentation">
+          <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-search"/></svg>
+          <span>Search docs</span><kbd>⌘K</kbd>
+        </button>
+        <button class="icon-btn theme-toggle" type="button" aria-label="Switch to light theme" title="Switch theme">
+          <svg class="icon icon-sun" aria-hidden="true"><use href="assets/img/icons.svg#i-sun"/></svg>
+          <svg class="icon icon-moon" aria-hidden="true"><use href="assets/img/icons.svg#i-moon"/></svg>
+        </button>
+        <a class="icon-btn" href="https://github.com/CrauxZahard/Runecord-backend" target="_blank" rel="noopener" aria-label="Backend repository on GitHub" title="Backend repository">
+          <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-github"/></svg>
+        </a>
+        <button class="icon-btn menu-btn" type="button" aria-label="Open documentation menu" aria-expanded="false" aria-controls="sidebar">
+          <svg class="icon menu-open" aria-hidden="true"><use href="assets/img/icons.svg#i-menu"/></svg>
+          <svg class="icon menu-close" aria-hidden="true"><use href="assets/img/icons.svg#i-close"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="docs-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Documentation navigation">
+      <div class="side-group">
+        <p class="side-label">Start here</p>
+        <a class="side-link" href="index.html">Overview</a>
+        <a class="side-link" href="getting-started.html">Getting started</a>
+        <a class="side-link" href="authentication.html">Authentication</a>
+      </div>
+      <div class="side-group">
+        <p class="side-label">Reference</p>
+        <a class="side-link" href="api-reference.html">HTTP API</a>
+        <a class="side-link" href="gateway.html">Gateway</a>
+        <a class="side-link" href="discord-compat.html">Discord-compatible API</a>
+      </div>
+      <div class="side-group">
+        <p class="side-label">Build</p>
+        <a class="side-link" href="bots.html">Bots &amp; apps</a>
+        <a class="side-link" href="bots.html#webhooks">Webhooks</a>
+        <a class="side-link" href="bots.html#interactions">Interactions</a>
+      </div>
+      <div class="side-group">
+        <p class="side-label">More</p>
+        <a class="side-link" href="../Runecord/">Runecord client</a>
+        <a class="side-link" href="https://github.com/CrauxZahard/Runecord-backend" target="_blank" rel="noopener">
+          Backend source
+          <svg class="icon ext" aria-hidden="true"><use href="assets/img/icons.svg#i-external"/></svg>
+        </a>
+      </div>
+      <div class="side-foot">
+        <div class="status-line"><span class="status-dot"></span> Server v0.1.0 · local</div>
+        <code>127.0.0.1:47800</code>
+      </div>
+    </aside>
+    <div class="sidebar-backdrop"></div>
+
+    <main class="doc-main" id="main">
+      <div class="doc-grid">
+        <article class="doc-content">
+          <p class="doc-eyebrow">Quick start</p>
+          <h1>Make your first API call.</h1>
+          <p class="doc-lede">Run the backend locally, authenticate, create a bot and connect to the gateway. This guide assumes the Runecord client and backend repositories are siblings on your machine.</p>
+
+          <div class="callout is-info">
+            <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-info"/></svg>
+            <div>
+              <strong>Base URL</strong>
+              <p><code>http://127.0.0.1:47800</code> by default. Change it with <code>--port</code>, or put a TLS reverse proxy in front for remote clients.</p>
+            </div>
+          </div>
+
+          <h2 id="run-the-server">1. Run the server</h2>
+          <p>From <code>Runecord-backend</code>, start the Rust service. The first launch creates the encrypted database, applies the migrations and seeds the demo accounts.</p>
+
+          <div class="code">
+            <div class="code-top">
+              <span class="code-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="code-lang">bash</span>
+              <button class="copy-btn" type="button">
+                <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-copy"/></svg>
+                <span class="copy-label">Copy</span>
+              </button>
+            </div>
+            <pre><code><span class="tok-p">cargo</span> run --release -p runecord-server -- --data data</code></pre>
+          </div>
+
+          <p>The server defaults to <code>127.0.0.1:47800</code>. For a public deployment, bind every interface and skip the demo seed:</p>
+
+          <div class="code">
+            <div class="code-top">
+              <span class="code-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="code-lang">bash</span>
+              <button class="copy-btn" type="button">
+                <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-copy"/></svg>
+                <span class="copy-label">Copy</span>
+              </button>
+            </div>
+            <pre><code><span class="tok-p">runecord-server</span> --host <span class="tok-n">0.0.0.0</span> --port <span class="tok-n">47800</span> --data data --no-demo</code></pre>
+          </div>
+
+          <div class="callout is-warn">
+            <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-warning"/></svg>
+            <div>
+              <strong>Terminate TLS in front of the server</strong>
+              <p>The reverse proxy must forward ordinary HTTP and the WebSocket upgrade for <code>/gateway</code>, <code>/gateway/v1</code> and <code>/voice</code> on the same host and port. The client derives <code>ws://</code> or <code>wss://</code> from the URL you configure.</p>
+            </div>
+          </div>
+
+          <h2 id="authenticate">2. Authenticate</h2>
+          <p>Register a new account, or log in to a seeded demo account. Both return a session token and the user object.</p>
+
+          <div class="code-tabs" data-tabs="login" role="tablist" aria-label="Login examples">
+            <button type="button" role="tab" data-tab="curl" aria-selected="true">curl</button>
+            <button type="button" role="tab" data-tab="javascript" aria-selected="false">JavaScript</button>
+            <button type="button" role="tab" data-tab="python" aria-selected="false">Python</button>
+          </div>
+
+          <div data-panel-group="login">
+            <div class="code-panel" data-panel="curl">
+              <div class="code">
+                <div class="code-top"><span class="code-lang">bash</span><button class="copy-btn" type="button"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-copy"/></svg><span class="copy-label">Copy</span></button></div>
+                <pre><code><span class="tok-p">curl</span> -s -X POST http://127.0.0.1:47800/api/login \
+  -H <span class="tok-s">"Content-Type: application/json"</span> \
+  -d <span class="tok-s">'{"username":"nova","password":"runecord"}'</span></code></pre>
+              </div>
+            </div>
+
+            <div class="code-panel" data-panel="javascript" hidden>
+              <div class="code">
+                <div class="code-top"><span class="code-lang">js</span><button class="copy-btn" type="button"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-copy"/></svg><span class="copy-label">Copy</span></button></div>
+                <pre><code><span class="tok-k">const</span> response = <span class="tok-k">await</span> <span class="tok-f">fetch</span>(<span class="tok-s">"http://127.0.0.1:47800/api/login"</span>, {
+  method: <span class="tok-s">"POST"</span>,
+  headers: { <span class="tok-p">"Content-Type"</span>: <span class="tok-s">"application/json"</span> },
+  body: <span class="tok-f">JSON.stringify</span>({ username: <span class="tok-s">"nova"</span>, password: <span class="tok-s">"runecord"</span> }),
+});
+
+<span class="tok-k">const</span> { token, user } = <span class="tok-k">await</span> response.<span class="tok-f">json</span>();</code></pre>
+              </div>
+            </div>
+
+            <div class="code-panel" data-panel="python" hidden>
+              <div class="code">
+                <div class="code-top"><span class="code-lang">python</span><button class="copy-btn" type="button"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-copy"/></svg><span class="copy-label">Copy</span></button></div>
+                <pre><code><span class="tok-k">import</span> requests
+
+response = requests.<span class="tok-f">post</span>(
+    <span class="tok-s">"http://127.0.0.1:47800/api/login"</span>,
+    json={<span class="tok-s">"username"</span>: <span class="tok-s">"nova"</span>, <span class="tok-s">"password"</span>: <span class="tok-s">"runecord"</span>},
+)
+token = response.<span class="tok-f">json</span>()[<span class="tok-s">"token"</span>]</code></pre>
+              </div>
+            </div>
+          </div>
+
+          <p>Send the token as a bearer header on every human-session request:</p>
+
+          <div class="code no-top">
+            <pre><code><span class="tok-p">Authorization</span>: <span class="tok-s">Bearer &lt;session-token&gt;</span></code></pre>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Endpoint</th><th>Auth</th><th>Purpose</th></tr></thead>
+              <tbody>
+                <tr><td><code>POST /api/register</code></td><td>Public</td><td>Create a local account</td></tr>
+                <tr><td><code>POST /api/login</code></td><td>Public</td><td>Exchange credentials for a token</td></tr>
+                <tr><td><code>POST /api/logout</code></td><td>Session</td><td>Revoke the current token</td></tr>
+                <tr><td><code>GET /api/bootstrap</code></td><td>Session</td><td>Load the full client state</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="callout is-tip">
+            <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-info"/></svg>
+            <div>
+              <strong>Demo accounts</strong>
+              <p>A fresh database includes <code>nova</code>, <code>maya</code>, <code>leo</code>, <code>sam</code>, <code>ana</code>, <code>priya</code> and <code>tom</code>. The password for all of them is <code>runecord</code>.</p>
+            </div>
+          </div>
+
+          <h2 id="create-a-bot">3. Create a bot</h2>
+          <p>Human sessions manage bots. Create one with the session token; the response includes a bot token that is shown once.</p>
+
+          <div class="code">
+            <div class="code-top">
+              <span class="code-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="code-lang">bash</span>
+              <button class="copy-btn" type="button"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-copy"/></svg><span class="copy-label">Copy</span></button>
+            </div>
+            <pre><code><span class="tok-p">curl</span> -s -X POST http://127.0.0.1:47800/api/bots \
+  -H <span class="tok-s">"Authorization: Bearer $TOKEN"</span> \
+  -H <span class="tok-s">"Content-Type: application/json"</span> \
+  -d <span class="tok-s">'{"name":"Runebot","guild_id":1}'</span></code></pre>
+          </div>
+
+          <div class="code no-top">
+            <pre><code>{
+  <span class="tok-p">"bot"</span>: { <span class="tok-p">"id"</span>: <span class="tok-n">42</span>, <span class="tok-p">"username"</span>: <span class="tok-s">"runebot"</span>, <span class="tok-p">"is_bot"</span>: <span class="tok-b">true</span> },
+  <span class="tok-p">"token"</span>: <span class="tok-s">"rcbot.5d41402abc4b…"</span>
+}</code></pre>
+          </div>
+
+          <p>Bot tokens use the <code>Bot</code> scheme, not <code>Bearer</code>:</p>
+
+          <div class="code no-top">
+            <pre><code><span class="tok-p">Authorization</span>: <span class="tok-s">Bot rcbot.5d41402abc4b…</span></code></pre>
+          </div>
+
+          <p>Passing <code>guild_id</code> adds the bot as a guild member and requires <code>MANAGE_GUILD</code>. Without it, the bot exists but is not in any server yet.</p>
+
+          <div class="callout is-warn">
+            <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-warning"/></svg>
+            <div>
+              <strong>The token is shown once</strong>
+              <p>Tokens are stored as SHA-256 hashes. If you lose it, delete the bot and create another, or rotate the token through an application.</p>
+            </div>
+          </div>
+
+          <h2 id="bootstrap">4. Read the bootstrap</h2>
+          <p><code>GET /api/bootstrap</code> returns the signed-in user, guilds, DMs, channels and read state in one payload. Use it to discover the channel ID for the next step.</p>
+
+          <div class="code">
+            <div class="code-top"><span class="code-lang">bash</span><button class="copy-btn" type="button"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-copy"/></svg><span class="copy-label">Copy</span></button></div>
+            <pre><code><span class="tok-p">curl</span> -s http://127.0.0.1:47800/api/bootstrap \
+  -H <span class="tok-s">"Authorization: Bearer $TOKEN"</span></code></pre>
+          </div>
+
+          <p>Native IDs are 64-bit integers and appear as JSON numbers. The Discord-compatible surface returns the same data with string IDs and ISO timestamps.</p>
+
+          <h2 id="first-message">5. Send a message</h2>
+          <p>Post into a channel with the bot token. The bot needs <code>VIEW_CHANNEL</code> and <code>SEND_MESSAGES</code>, and it must be a member of the guild.</p>
+
+          <div class="code">
+            <div class="code-top"><span class="code-lang">bash</span><button class="copy-btn" type="button"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-copy"/></svg><span class="copy-label">Copy</span></button></div>
+            <pre><code><span class="tok-p">curl</span> -s -X POST http://127.0.0.1:47800/api/channels/12/messages \
+  -H <span class="tok-s">"Authorization: Bot $BOT_TOKEN"</span> \
+  -H <span class="tok-s">"Content-Type: application/json"</span> \
+  -d <span class="tok-s">'{"content":"Hello from the API","nonce":"demo-1"}'</span></code></pre>
+          </div>
+
+          <p>Every connected client receives the message over the gateway as a <code>message_create</code> event.</p>
+
+          <h2 id="connect-gateway">6. Listen for events</h2>
+          <p>The native gateway is a WebSocket at <code>/gateway</code>. Authenticate with the same <code>Bot</code> header and read newline-free JSON frames with an <code>{ op, d }</code> envelope.</p>
+
+          <div class="code">
+            <div class="code-top"><span class="code-lang">js</span><button class="copy-btn" type="button"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-copy"/></svg><span class="copy-label">Copy</span></button></div>
+            <pre><code><span class="tok-k">import</span> WebSocket <span class="tok-k">from</span> <span class="tok-s">"ws"</span>;
+
+<span class="tok-k">const</span> ws = <span class="tok-k">new</span> <span class="tok-f">WebSocket</span>(<span class="tok-s">"ws://127.0.0.1:47800/gateway"</span>, {
+  headers: { Authorization: <span class="tok-s">`Bot ${process.env.BOT_TOKEN}`</span> },
+});
+
+ws.<span class="tok-f">on</span>(<span class="tok-s">"message"</span>, (raw) => {
+  <span class="tok-k">const</span> event = <span class="tok-f">JSON.parse</span>(raw);
+  <span class="tok-k">if</span> (event.op === <span class="tok-s">"message_create"</span>) {
+    console.<span class="tok-f">log</span>(event.d.author.username, event.d.content);
+  }
+});</code></pre>
+          </div>
+
+          <p>The first frame is <code>ready</code> with the full bootstrap. Send <code>{"op":"subscribe","d":{"channel_id":12}}</code> to narrow a connection to one channel, and <code>{"op":"heartbeat"}</code> to keep it alive.</p>
+
+          <div class="callout is-info">
+            <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-info"/></svg>
+            <div>
+              <strong>Browser WebSockets cannot set headers</strong>
+              <p>Use a server-side client for the native gateway, or connect to <code>/gateway/v1</code> and send the token in an <code>IDENTIFY</code> frame.</p>
+            </div>
+          </div>
+
+          <h2 id="next-steps">Next steps</h2>
+          <div class="card-grid">
+            <a class="card" href="api-reference.html">
+              <span class="card-ico"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-api"/></svg></span>
+              <h3>API reference</h3>
+              <p>Filter every native route by resource, method and auth type.</p>
+              <span class="card-link">Browse routes <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-arrow"/></svg></span>
+            </a>
+            <a class="card" href="gateway.html">
+              <span class="card-ico"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-bolt"/></svg></span>
+              <h3>Gateway</h3>
+              <p>Events, commands, intents, heartbeats and resume.</p>
+              <span class="card-link">Read the protocol <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-arrow"/></svg></span>
+            </a>
+            <a class="card" href="bots.html">
+              <span class="card-ico"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-bot"/></svg></span>
+              <h3>Bots &amp; apps</h3>
+              <p>Commands, applications, interactions and webhooks.</p>
+              <span class="card-link">Build a bot <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-arrow"/></svg></span>
+            </a>
+          </div>
+        </article>
+
+        <aside class="toc" aria-label="On this page">
+          <p class="toc-label">On this page</p>
+          <nav class="toc-list" id="toc-list"></nav>
+        </aside>
+      </div>
+
+      <footer class="doc-foot">
+        <div class="doc-foot-inner">
+          <span>© <span id="year">2026</span> Runecord · API v0.1.0</span>
+          <div class="doc-foot-links">
+            <a href="../Runecord/">Client site</a>
+            <a href="https://github.com/CrauxZahard/Runecord-backend" target="_blank" rel="noopener">GitHub</a>
+            <a href="api-reference.html">API reference</a>
+          </div>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <dialog class="search-dialog" id="search-dialog" aria-label="Search documentation">
+    <div class="search-top">
+      <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-search"/></svg>
+      <input id="search-input" type="search" placeholder="Search docs, endpoints, events…" autocomplete="off" spellcheck="false">
+      <button class="search-close" type="button" aria-label="Close search"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-close"/></svg></button>
+    </div>
+    <div class="search-results" id="search-results"></div>
+    <div class="search-foot">
+      <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+      <span><kbd>↵</kbd> open</span>
+      <span><kbd>esc</kbd> close</span>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="assets/js/api-data.js"></script>
+  <script src="assets/js/site.js"></script>
+</body>
+</html>
+

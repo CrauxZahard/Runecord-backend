@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Authentication — Runecord Developers</title>
+  <meta name="description" content="Session and bot authentication, token formats, permissions, errors and rate limits for the Runecord API.">
+  <meta name="theme-color" content="#020617">
+  <link rel="canonical" href="https://crauxzahard.github.io/Runecord-backend/authentication.html">
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/img/icon-180.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem('runecord-docs-theme') === 'light') {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="index.html" aria-label="Runecord Developers home">
+        <img src="assets/img/logo.svg" width="34" height="34" alt="">
+        <span>Runecord</span>
+        <span class="brand-badge">Developers</span>
+      </a>
+      <nav class="topnav" aria-label="Primary navigation">
+        <a href="getting-started.html">Docs</a>
+        <a href="api-reference.html">API</a>
+        <a href="gateway.html">Gateway</a>
+        <a href="bots.html">Bots</a>
+        <a href="discord-compat.html">Discord API</a>
+      </nav>
+      <div class="top-actions">
+        <button class="search-trigger" type="button" data-search-open aria-label="Search documentation">
+          <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-search"/></svg>
+          <span>Search docs</span><kbd>⌘K</kbd>
+        </button>
+        <button class="icon-btn theme-toggle" type="button" aria-label="Switch to light theme" title="Switch theme">
+          <svg class="icon icon-sun" aria-hidden="true"><use href="assets/img/icons.svg#i-sun"/></svg>
+          <svg class="icon icon-moon" aria-hidden="true"><use href="assets/img/icons.svg#i-moon"/></svg>
+        </button>
+        <a class="icon-btn" href="https://github.com/CrauxZahard/Runecord-backend" target="_blank" rel="noopener" aria-label="Backend repository on GitHub" title="Backend repository">
+          <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-github"/></svg>
+        </a>
+        <button class="icon-btn menu-btn" type="button" aria-label="Open documentation menu" aria-expanded="false" aria-controls="sidebar">
+          <svg class="icon menu-open" aria-hidden="true"><use href="assets/img/icons.svg#i-menu"/></svg>
+          <svg class="icon menu-close" aria-hidden="true"><use href="assets/img/icons.svg#i-close"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="docs-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Documentation navigation">
+      <div class="side-group">
+        <p class="side-label">Start here</p>
+        <a class="side-link" href="index.html">Overview</a>
+        <a class="side-link" href="getting-started.html">Getting started</a>
+        <a class="side-link" href="authentication.html">Authentication</a>
+      </div>
+      <div class="side-group">
+        <p class="side-label">Reference</p>
+        <a class="side-link" href="api-reference.html">HTTP API</a>
+        <a class="side-link" href="gateway.html">Gateway</a>
+        <a class="side-link" href="discord-compat.html">Discord-compatible API</a>
+      </div>
+      <div class="side-group">
+        <p class="side-label">Build</p>
+        <a class="side-link" href="bots.html">Bots &amp; apps</a>
+        <a class="side-link" href="bots.html#webhooks">Webhooks</a>
+        <a class="side-link" href="bots.html#interactions">Interactions</a>
+      </div>
+      <div class="side-group">
+        <p class="side-label">More</p>
+        <a class="side-link" href="../Runecord/">Runecord client</a>
+        <a class="side-link" href="https://github.com/CrauxZahard/Runecord-backend" target="_blank" rel="noopener">
+          Backend source
+          <svg class="icon ext" aria-hidden="true"><use href="assets/img/icons.svg#i-external"/></svg>
+        </a>
+      </div>
+      <div class="side-foot">
+        <div class="status-line"><span class="status-dot"></span> Server v0.1.0 · local</div>
+        <code>127.0.0.1:47800</code>
+      </div>
+    </aside>
+    <div class="sidebar-backdrop"></div>
+
+    <main class="doc-main" id="main">
+      <div class="doc-grid">
+        <article class="doc-content">
+          <p class="doc-eyebrow">Concepts</p>
+          <h1>Authentication &amp; tokens.</h1>
+          <p class="doc-lede">Two schemes, one rule: every request is authenticated as a user. People use short-lived sessions, bots use long-lived tokens, and permissions are enforced the same way for both.</p>
+
+          <h2 id="schemes">Two auth schemes</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Scheme</th><th>Header</th><th>Used by</th></tr></thead>
+              <tbody>
+                <tr><td><code>Bearer</code></td><td><code>Authorization: Bearer &lt;token&gt;</code></td><td>Human sessions from register or login</td></tr>
+                <tr><td><code>Bot</code></td><td><code>Authorization: Bot rcbot.…</code></td><td>Bot users and applications</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p>The server parses both schemes in <code>auth_user</code>. Human-only endpoints such as bot creation, application management and friend requests use <code>auth_human</code> and reject bot tokens.</p>
+
+          <div class="code no-top">
+            <pre><code><span class="tok-c"># human session</span>
+<span class="tok-p">Authorization</span>: <span class="tok-s">Bearer 4f9c2a8e…</span>
+
+<span class="tok-c"># bot</span>
+<span class="tok-p">Authorization</span>: <span class="tok-s">Bot rcbot.5d41402abc4b…</span></code></pre>
+          </div>
+
+          <h2 id="sessions">Session tokens</h2>
+          <p><code>POST /api/register</code> and <code>POST /api/login</code> return a 64-character hex token alongside the user object. Store it in memory or an OS keychain, and send it on every request.</p>
+
+          <div class="code">
+            <div class="code-top">
+              <span class="code-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="code-lang">bash</span>
+              <button class="copy-btn" type="button"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-copy"/></svg><span class="copy-label">Copy</span></button>
+            </div>
+            <pre><code><span class="tok-p">curl</span> -s -X POST http://127.0.0.1:47800/api/register \
+  -H <span class="tok-s">"Content-Type: application/json"</span> \
+  -d <span class="tok-s">'{"username":"maya","password":"correct horse"}'</span></code></pre>
+          </div>
+
+          <p>Sessions persist until they are revoked. <code>POST /api/logout</code> deletes the current token; deleting the user or rotating credentials invalidates the rest. Tokens are stored as SHA-256 hashes, so a database read does not expose usable credentials.</p>
+
+          <h2 id="bot-tokens">Bot tokens</h2>
+          <p>Bot tokens start with <code>rcbot.</code> followed by 64 hex characters. They are created by <code>POST /api/bots</code>, returned once, and then only their hash is retained.</p>
+
+          <div class="code no-top">
+            <pre><code><span class="tok-c"># create as a human session</span>
+<span class="tok-p">curl</span> -X POST http://127.0.0.1:47800/api/bots \
+  -H <span class="tok-s">"Authorization: Bearer $SESSION"</span> \
+  -d <span class="tok-s">'{"name":"Runebot","guild_id":1}'</span>
+
+<span class="tok-c"># response</span>
+{ <span class="tok-p">"bot"</span>: { <span class="tok-p">"id"</span>: <span class="tok-n">42</span>, <span class="tok-p">"is_bot"</span>: <span class="tok-b">true</span> }, <span class="tok-p">"token"</span>: <span class="tok-s">"rcbot.5d41…"</span> }</code></pre>
+          </div>
+
+          <p>A bot is a normal <code>users</code> row with <code>is_bot = 1</code>. It can be a guild member, hold roles, author messages and appear in mentions. The token must include the <code>bot</code> scope, which is granted on creation.</p>
+
+          <div class="callout is-warn">
+            <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-warning"/></svg>
+            <div>
+              <strong>Never ship a bot token to a client</strong>
+              <p>Anyone with the token can act as the bot. Keep it on the server, rotate it if it leaks, and revoke it with <code>DELETE /api/bots/{id}</code>.</p>
+            </div>
+          </div>
+
+          <h2 id="permissions">Permissions</h2>
+          <p>Permissions are a 64-bit bitfield. A guild member's effective permissions are the base role permissions combined with channel overwrites. <code>ADMINISTRATOR</code> bypasses channel checks.</p>
+
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Permission</th><th>Bit</th><th>Controls</th></tr></thead>
+              <tbody>
+                <tr><td><code>VIEW_CHANNEL</code></td><td>10</td><td>See a channel at all</td></tr>
+                <tr><td><code>SEND_MESSAGES</code></td><td>11</td><td>Post in a text channel</td></tr>
+                <tr><td><code>MANAGE_MESSAGES</code></td><td>13</td><td>Delete and pin other people's messages</td></tr>
+                <tr><td><code>READ_MESSAGE_HISTORY</code></td><td>16</td><td>Read messages sent before joining</td></tr>
+                <tr><td><code>CONNECT</code></td><td>20</td><td>Join a voice channel</td></tr>
+                <tr><td><code>SPEAK</code></td><td>21</td><td>Transmit audio</td></tr>
+                <tr><td><code>MANAGE_ROLES</code></td><td>28</td><td>Create, edit and assign roles</td></tr>
+                <tr><td><code>MANAGE_GUILD</code></td><td>5</td><td>Edit server settings and add bots</td></tr>
+                <tr><td><code>ADMINISTRATOR</code></td><td>3</td><td>Bypass permission checks</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p>Check <code>GET /api/guilds/{id}/permissions</code> for the caller's base permissions and <code>GET /api/channels/{id}/permissions</code> for overwrites. The client computes the same values locally from the guild payload.</p>
+
+          <h2 id="errors">Errors</h2>
+          <p>Native endpoints return a JSON object with a single <code>error</code> string. The Discord-compatible surface returns <code>{ code, message }</code> with Discord error codes.</p>
+
+          <div class="code no-top">
+            <pre><code><span class="tok-c"># native</span>
+{ <span class="tok-p">"error"</span>: <span class="tok-s">"you don't have permission to do that"</span> }
+
+<span class="tok-c"># /api/v1</span>
+{ <span class="tok-p">"code"</span>: <span class="tok-n">50001</span>, <span class="tok-p">"message"</span>: <span class="tok-s">"Missing Access"</span> }</code></pre>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+              <tbody>
+                <tr><td><code>400</code></td><td>Invalid body, name or parameter</td></tr>
+                <tr><td><code>401</code></td><td>Missing, invalid or revoked token</td></tr>
+                <tr><td><code>403</code></td><td>Authenticated but missing a permission</td></tr>
+                <tr><td><code>404</code></td><td>Unknown guild, channel, message or user</td></tr>
+                <tr><td><code>429</code></td><td>Rate limit exceeded</td></tr>
+                <tr><td><code>500</code></td><td>Storage or server failure</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 id="rate-limits">Rate limits</h2>
+          <p>Limits are bucketed per actor, route and major ID, with an additional global bucket of 50 requests per second. Every response carries the bucket state.</p>
+
+          <div class="code no-top">
+            <pre><code><span class="tok-p">X-RateLimit-Limit</span>: <span class="tok-n">60</span>
+<span class="tok-p">X-RateLimit-Remaining</span>: <span class="tok-n">59</span>
+<span class="tok-p">X-RateLimit-Reset</span>: <span class="tok-n">1794691200.120</span>
+<span class="tok-p">X-RateLimit-Reset-After</span>: <span class="tok-n">0.120</span>
+<span class="tok-p">X-RateLimit-Bucket</span>: <span class="tok-s">"a1b2c3"</span></code></pre>
+          </div>
+
+          <p>Default buckets include 5 requests per 60 seconds for login and register, 5 per 5 seconds for message sends, edits and reactions, 10 uploads per minute, 2 bot creations per minute and 60 reads per minute.</p>
+
+          <p>A limited request returns <code>429</code> with <code>Retry-After</code> and, for global limits, <code>X-RateLimit-Global: true</code>.</p>
+
+          <div class="code no-top">
+            <pre><code>{
+  <span class="tok-p">"code"</span>: <span class="tok-n">0</span>,
+  <span class="tok-p">"message"</span>: <span class="tok-s">"You are being rate limited."</span>,
+  <span class="tok-p">"retry_after"</span>: <span class="tok-n">4.746</span>,
+  <span class="tok-p">"global"</span>: <span class="tok-b">false</span>
+}</code></pre>
+          </div>
+
+          <h2 id="safety">Token safety</h2>
+          <ul>
+            <li>Use HTTPS in production; bearer and bot tokens are passwords.</li>
+            <li>Do not log authorization headers or paste tokens into issues.</li>
+            <li>Keep <code>data/key.bin</code> out of backups you do not control.</li>
+            <li>Revoke rather than overwrite: <code>POST /api/logout</code> for sessions, <code>DELETE /api/bots/{id}</code> for bots.</li>
+            <li>Rate-limit your own retries and honour <code>Retry-After</code>.</li>
+          </ul>
+        </article>
+
+        <aside class="toc" aria-label="On this page">
+          <p class="toc-label">On this page</p>
+          <nav class="toc-list" id="toc-list"></nav>
+        </aside>
+      </div>
+
+      <footer class="doc-foot">
+        <div class="doc-foot-inner">
+          <span>© <span id="year">2026</span> Runecord · API v0.1.0</span>
+          <div class="doc-foot-links">
+            <a href="../Runecord/">Client site</a>
+            <a href="https://github.com/CrauxZahard/Runecord-backend" target="_blank" rel="noopener">GitHub</a>
+            <a href="api-reference.html">API reference</a>
+          </div>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <dialog class="search-dialog" id="search-dialog" aria-label="Search documentation">
+    <div class="search-top">
+      <svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-search"/></svg>
+      <input id="search-input" type="search" placeholder="Search docs, endpoints, events…" autocomplete="off" spellcheck="false">
+      <button class="search-close" type="button" aria-label="Close search"><svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-close"/></svg></button>
+    </div>
+    <div class="search-results" id="search-results"></div>
+    <div class="search-foot">
+      <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+      <span><kbd>↵</kbd> open</span>
+      <span><kbd>esc</kbd> close</span>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="assets/js/api-data.js"></script>
+  <script src="assets/js/site.js"></script>
+</body>
+</html>
+
