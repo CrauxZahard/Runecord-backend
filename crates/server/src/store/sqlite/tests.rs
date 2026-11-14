@@ -862,6 +862,16 @@ fn profile_activity_and_connections_round_trip() {
     assert_eq!(user.connections[0].kind, "github");
     assert_eq!(user.connections[0].name, "nova");
 
+    conn.execute(
+        "UPDATE users SET profile_effect='aurora', nameplate='midnight', profile_widget='stats' WHERE id=1",
+        [],
+    )
+    .unwrap();
+    let styled = user_by_id(&conn, 1).unwrap();
+    assert_eq!(styled.profile_effect, "aurora");
+    assert_eq!(styled.nameplate, "midnight");
+    assert_eq!(styled.profile_widget, "stats");
+
     conn.execute("UPDATE users SET activity_kind='' WHERE id=1", [])
         .unwrap();
     assert!(user_by_id(&conn, 1).unwrap().activity.is_none());

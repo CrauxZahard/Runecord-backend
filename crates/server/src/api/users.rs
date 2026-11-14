@@ -117,6 +117,12 @@ pub(crate) struct MeBody {
     clear_activity: bool,
     #[serde(default)]
     connections: Option<Vec<ProfileConnection>>,
+    #[serde(default)]
+    profile_effect: Option<String>,
+    #[serde(default)]
+    nameplate: Option<String>,
+    #[serde(default)]
+    profile_widget: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -294,6 +300,33 @@ pub(crate) async fn update_me(
             )
             .map_err(internal)?;
         }
+    }
+    if let Some(effect) = body.profile_effect {
+        conn.execute(
+            "UPDATE users SET profile_effect=?1 WHERE id=?2",
+            params![effect.trim().chars().take(32).collect::<String>(), me],
+        )
+        .map_err(internal)?;
+    }
+    if let Some(nameplate) = body.nameplate {
+        conn.execute(
+            "UPDATE users SET nameplate=?1 WHERE id=?2",
+            params![nameplate.trim().chars().take(32).collect::<String>(), me],
+        )
+        .map_err(internal)?;
+    }
+    if let Some(widget) = body.profile_widget {
+        let widget: String = widget.trim().to_lowercase().chars().take(32).collect();
+        let widget = if matches!(widget.as_str(), "stats" | "activity") {
+            widget
+        } else {
+            "none".into()
+        };
+        conn.execute(
+            "UPDATE users SET profile_widget=?1 WHERE id=?2",
+            params![widget, me],
+        )
+        .map_err(internal)?;
     }
     if let Some(connections) = body.connections {
         let clean: Vec<ProfileConnection> = connections

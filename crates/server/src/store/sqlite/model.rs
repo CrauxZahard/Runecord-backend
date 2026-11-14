@@ -75,6 +75,9 @@ pub fn user_from_row(r: &Row<'_>) -> rusqlite::Result<User> {
             .map(str::to_string)
             .collect(),
         avatar_decoration: r.get("avatar_decoration").unwrap_or_default(),
+        profile_effect: r.get("profile_effect").unwrap_or_default(),
+        nameplate: r.get("nameplate").unwrap_or_default(),
+        profile_widget: r.get("profile_widget").unwrap_or_default(),
         activity: activity_from_user_row(r),
         connections: r
             .get::<_, String>("connections")

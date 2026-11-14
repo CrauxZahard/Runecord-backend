@@ -103,6 +103,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0025_guild_events",
         include_str!("../../../../../migrations/0025_guild_events.sql"),
     ),
+    (
+        "0026_profile_effects",
+        include_str!("../../../../../migrations/0026_profile_effects.sql"),
+    ),
 ];
 
 /// Applies numbered migrations once each and returns the connection.

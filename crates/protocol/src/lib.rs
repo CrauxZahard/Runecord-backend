@@ -96,6 +96,12 @@ pub struct User {
     #[serde(default)]
     pub avatar_decoration: String,
     #[serde(default)]
+    pub profile_effect: String,
+    #[serde(default)]
+    pub nameplate: String,
+    #[serde(default)]
+    pub profile_widget: String,
+    #[serde(default)]
     pub activity: Option<ProfileActivity>,
     #[serde(default)]
     pub connections: Vec<ProfileConnection>,

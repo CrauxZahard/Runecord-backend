@@ -10,7 +10,7 @@ crates/server        axum routes, gateway, workers
 crates/server/src/api
   mod.rs             router, auth helpers, errors
   auth.rs            register/login/logout
-  users.rs           profiles, activity, connections, read state
+  users.rs           profiles, activity, effects, nameplates, widgets, read state
   guilds.rs          guild detail and guild CRUD
   members.rs         paginated members and member updates
   channels.rs        channels, overwrites, threads
@@ -74,7 +74,7 @@ There is no external cache and no Redis. One process serves accounts on loopback
 
 ## API surface
 
-`POST /api/register`, `/api/login`, `/api/logout` · `GET /api/bootstrap` · `PATCH /api/me` · profile activity, artwork and connections · `POST /api/me/password` · `POST /api/me/privacy` · `GET /api/users/lookup?q=` · `GET /api/users/{id}/mutuals` · `POST/DELETE /api/me/avatar` · `POST/DELETE /api/me/banner` · guilds/channels/messages/reactions/pins/threads · server overview edit · server icon and banner upload · server boosts with level-based upload and voice limits · kick/ban/timeout, ban list, unban and ban appeals · prune preview and apply · leave server · channel notification levels and @everyone suppression · server notification settings and overrides · public server directory and join · server discoverability · friends/DMs · inbox mentions and unreads · server events with create/list/delete · group DMs with rename, icon, member add/remove and leave · invites · roles with icons and links · bots · applications/install links/commands · guild commands · interactions · guild emojis · audit logs · uploads · `GET /gateway` and `/voice` (WebSockets).
+`POST /api/register`, `/api/login`, `/api/logout` · `GET /api/bootstrap` · `PATCH /api/me` · profile activity, artwork, connections, effects, nameplates and widgets · `POST /api/me/password` · `POST /api/me/privacy` · `GET /api/users/lookup?q=` · `GET /api/users/{id}/mutuals` · `POST/DELETE /api/me/avatar` · `POST/DELETE /api/me/banner` · guilds/channels/messages/reactions/pins/threads · server overview edit · server icon and banner upload · server boosts with level-based upload and voice limits · kick/ban/timeout, ban list, unban and ban appeals · prune preview and apply · leave server · channel notification levels and @everyone suppression · server notification settings and overrides · public server directory and join · server discoverability · friends/DMs · inbox mentions and unreads · server events with create/list/delete · group DMs with rename, icon, member add/remove and leave · invites · roles with icons and links · bots · applications/install links/commands · guild commands · interactions · guild emojis · audit logs · uploads · `GET /gateway` and `/voice` (WebSockets).
 
 ### Bot accounts
 
