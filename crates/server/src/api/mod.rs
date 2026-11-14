@@ -251,6 +251,14 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/invites/{code}/appeal", post(submit_appeal))
         .route("/api/guilds/{id}/roles", get(list_roles).post(create_role))
         .route("/api/inbox", get(inbox::inbox))
+        .route(
+            "/api/guilds/{id}/events",
+            get(events::list_events).post(events::create_event),
+        )
+        .route(
+            "/api/guilds/{id}/events/{event}",
+            delete(events::delete_event),
+        )
         .route("/api/guilds/{id}/permissions", get(my_permissions))
         .route("/api/channels/{id}/permissions", get(channel_overwrites))
         .route(
@@ -322,6 +330,7 @@ pub fn router(state: Arc<AppState>) -> Router {
 mod auth;
 mod bots;
 mod channels;
+mod events;
 mod gateway;
 mod guilds;
 mod inbox;

@@ -779,6 +779,44 @@ fn moderation_kick_ban_timeout_and_hierarchy() {
 }
 
 #[test]
+fn guild_events_store_and_order_by_start() {
+    let conn = Connection::open_in_memory().expect("memory db");
+    migrate(&conn).expect("migrate");
+    conn.execute(
+        "INSERT INTO guilds(id, name, icon_color, owner_id, description, created_at, everyone_role_id) VALUES(1,'Guild',0,1,'',1,10)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO users(id, username, display_name, pass_hash, created_at) VALUES(1,'nova','Nova','x',1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO channels(id, guild_id, name, kind, topic) VALUES(10,1,'general','text','')",
+        [],
+    )
+    .unwrap();
+    for (id, name, start) in [(10, "Later", 200), (11, "Sooner", 100)] {
+        conn.execute(
+            "INSERT INTO guild_events(id, guild_id, creator_id, name, description, start_at, channel_id, created_at)
+             VALUES(?1,1,1,?2,'',?3,10,1)",
+            params![id, name, start],
+        )
+        .unwrap();
+    }
+    let mut stmt = conn
+        .prepare("SELECT name FROM guild_events WHERE guild_id=1 ORDER BY start_at")
+        .unwrap();
+    let names: Vec<String> = stmt
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .flatten()
+        .collect();
+    assert_eq!(names, vec!["Sooner", "Later"]);
+}
+
+#[test]
 fn voice_channel_status_round_trips() {
     let conn = Connection::open_in_memory().expect("memory db");
     migrate(&conn).expect("migrate");

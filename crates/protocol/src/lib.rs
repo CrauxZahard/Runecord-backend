@@ -349,6 +349,28 @@ pub struct RoleLink {
     pub url: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GuildEvent {
+    pub id: Id,
+    pub guild_id: Id,
+    pub creator_id: Id,
+    pub name: String,
+    pub description: String,
+    pub start_at: i64,
+    pub channel_id: Option<Id>,
+    pub created_at: i64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateGuildEvent {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    pub start_at: i64,
+    #[serde(default)]
+    pub channel_id: Option<Id>,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct InboxEntry {
     pub channel_id: Id,
