@@ -46,7 +46,9 @@ pub struct PendingInteraction {
 #[tokio::main]
 async fn main() {
     let mut port: u16 = 47_800;
+    let mut host: std::net::IpAddr = std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST);
     let mut data = PathBuf::from("data");
+    let mut demo = true;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -55,13 +57,29 @@ async fn main() {
                     port = v;
                 }
             }
+            "--host" => {
+                let Some(value) = args.next() else {
+                    eprintln!("runecord: --host needs an IP address");
+                    std::process::exit(1);
+                };
+                match value.parse() {
+                    Ok(value) => host = value,
+                    Err(_) => {
+                        eprintln!("runecord: invalid host address {value}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            "--no-demo" => demo = false,
             "--data" => {
                 if let Some(v) = args.next() {
                     data = PathBuf::from(v);
                 }
             }
             "--help" | "-h" => {
-                println!("runecord-server [--port 47800] [--data data]");
+                println!(
+                    "runecord-server [--host 127.0.0.1] [--port 47800] [--data data] [--no-demo]"
+                );
                 return;
             }
             _ => {}
@@ -87,10 +105,12 @@ async fn main() {
             std::process::exit(1);
         }
     };
-    let _ = store::seed_demo(&store.conn(), Some("nova"));
-    store::seed_demo_app(&store.conn());
-    store::seed_public_guild(&store.conn());
-    store.flush_now();
+    if demo {
+        let _ = store::seed_demo(&store.conn(), Some("nova"));
+        store::seed_demo_app(&store.conn());
+        store::seed_public_guild(&store.conn());
+        store.flush_now();
+    }
 
     let (tx, _) = broadcast::channel(1024);
     let _ = std::fs::create_dir_all(data.join("thumbs"));
@@ -143,7 +163,7 @@ async fn main() {
             ratelimit::middleware,
         ));
 
-    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    let addr = std::net::SocketAddr::new(host, port);
     let listener = match tokio::net::TcpListener::bind(addr).await {
         Ok(l) => l,
         Err(err) => {

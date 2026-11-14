@@ -45,9 +45,17 @@ data/                runtime database + uploads (gitignored)
 cargo run --release -p runecord-server -- --data data
 ```
 
-Defaults to `127.0.0.1:47800`. `--port` and `--data` override.
+Defaults to `127.0.0.1:47800`. `--host`, `--port` and `--data` override.
 
-The first start creates `data/runecord.db`, applies `migrations/`, and seeds the demo accounts (`nova`, `maya`, `leo`, `sam`, `ana`, `priya`, `tom`, `runebot`; password `runecord`).
+The first start creates `data/runecord.db`, applies `migrations/`, and seeds the demo accounts (`nova`, `maya`, `leo`, `sam`, `ana`, `priya`, `tom`, `runebot`; password `runecord`). Pass `--no-demo` on a public deployment to skip those accounts and start with an empty database.
+
+## Self-hosting
+
+```bat
+runecord-server --host 0.0.0.0 --port 47800 --data data --no-demo
+```
+
+`--host 0.0.0.0` listens on every interface. Put a TLS reverse proxy in front of the port and point the client's **User Settings → Application → Backend Server** at the public `https://` URL. The reverse proxy must forward ordinary HTTP and the WebSocket upgrade for `/gateway` and `/voice` on the same host and port; the client derives `ws://` or `wss://` from the configured URL. The demo seed is off with `--no-demo`, so register the first account against the empty server instead of shipping known credentials.
 
 ## Encryption at rest
 
