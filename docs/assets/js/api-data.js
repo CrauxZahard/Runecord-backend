@@ -249,3 +249,360 @@ window.RUNECORD_V1 = [
   { m: "GET", p: "/api/v1/gateway", d: "Gateway URL for the current session." },
   { m: "GET", p: "/api/v1/gateway/bot", d: "Gateway URL for a bot." }
 ];
+
+/* Curated response examples, keyed by "METHOD path". Anything not listed
+   falls back to a representative shape for its resource group. */
+(function () {
+  var user = {
+    id: 7,
+    username: "maya",
+    display_name: "Maya Chen",
+    avatar_color: 6,
+    bio: "building tiny UIs",
+    custom_status: "shipping",
+    status: "online",
+    is_bot: false,
+    created_at: 1794000000000
+  };
+
+  var guild = {
+    id: 1,
+    name: "Rune Lounge",
+    icon_color: 5,
+    owner_id: 1,
+    description: "A home for interface obsessives.",
+    member_count: 8,
+    tag: "",
+    permissions: 1024,
+    unread_count: 0,
+    mention_count: 0,
+    created_at: 1794000000000,
+    discoverable: true
+  };
+
+  var channel = {
+    id: 12,
+    guild_id: 1,
+    name: "general",
+    kind: "text",
+    position: 2,
+    parent_id: null,
+    topic: "Talk about anything and everything",
+    status: "",
+    nsfw: false,
+    slowmode: 0,
+    last_message_id: 9081,
+    owner_id: null,
+    thread: null,
+    my_permissions: 1024,
+    icon_url: ""
+  };
+
+  var role = {
+    id: 3,
+    guild_id: 1,
+    name: "Moderator",
+    color: 3447003,
+    permissions: 1024,
+    position: 1,
+    hoist: true,
+    mentionable: true,
+    icon_url: ""
+  };
+
+  var member = {
+    guild_id: 1,
+    user: user,
+    nickname: "",
+    roles: [3],
+    joined_at: 1794000000000,
+    timeout_until: 0
+  };
+
+  var message = {
+    id: 9081,
+    channel_id: 12,
+    author_id: 7,
+    content: "shipped it.",
+    timestamp: 1794691200123,
+    edited_at: null,
+    attachments: [],
+    reactions: [
+      { emoji: "🔥", count: 3, me: false, user_ids: [1, 4, 8] }
+    ],
+    pinned: false,
+    thread_id: null,
+    mentions: [],
+    mention_everyone: false
+  };
+
+  var invite = {
+    code: "rune-lounge",
+    guild_id: 1,
+    guild_name: "Rune Lounge",
+    guild_icon_color: 5,
+    inviter_id: 1,
+    uses: 0,
+    created_at: 1794000000000,
+    member_count: 8
+  };
+
+  var bot = {
+    id: 42,
+    username: "runebot",
+    display_name: "Runebot",
+    avatar_color: 4,
+    bio: "",
+    custom_status: "",
+    status: "online",
+    is_bot: true,
+    created_at: 1794000000000
+  };
+
+  var application = {
+    id: 3,
+    owner_id: 1,
+    name: "Runebot Tools",
+    description: "Utilities for Rune Lounge",
+    icon_color: 35071,
+    bot: bot,
+    scopes: ["bot", "applications.commands"],
+    permissions: 0,
+    created_at: 1794000000000
+  };
+
+  var command = {
+    id: 18,
+    app_id: 3,
+    name: "ping",
+    description: "Check the bot's latency",
+    options: []
+  };
+
+  var webhook = {
+    id: 7,
+    guild_id: 1,
+    channel_id: 12,
+    name: "CI",
+    avatar_color: 3447003,
+    token: "rcwh.9a1f…"
+  };
+
+  var audit = {
+    id: 91,
+    guild_id: 1,
+    actor_id: 1,
+    action_type: 20,
+    target_id: 7,
+    changes: [{ key: "nickname", new_value: "maya" }],
+    created_at: 1794691200123
+  };
+
+  var event = {
+    id: 4,
+    guild_id: 1,
+    creator_id: 1,
+    name: "Design review",
+    description: "Walk through the next interface pass.",
+    start_at: 1794777600000,
+    channel_id: 12,
+    created_at: 1794691200123
+  };
+
+  var inboxEntry = {
+    channel_id: 12,
+    guild_id: 1,
+    message_id: 9081,
+    guild_name: "Rune Lounge",
+    channel_name: "general",
+    author_id: 7,
+    author_name: "Maya Chen",
+    snippet: "shipped it.",
+    timestamp: 1794691200123,
+    unread: 0,
+    mention: true
+  };
+
+  var dm = {
+    channel: {
+      id: 22,
+      guild_id: null,
+      name: "",
+      kind: "dm",
+      position: 0,
+      parent_id: null,
+      topic: "",
+      status: "",
+      nsfw: false,
+      slowmode: 0,
+      last_message_id: null,
+      owner_id: 7,
+      thread: null,
+      my_permissions: 0,
+      icon_url: ""
+    },
+    recipients: [user]
+  };
+
+  window.RUNECORD_RESPONSES = {
+    "GET /health": { status: "200 OK", body: "ok" },
+    "GET /api/version": { body: { name: "runecord", version: "0.1.0" } },
+    "POST /api/register": { body: { token: "4f9c2a8e1c7d…", user: user } },
+    "POST /api/login": { body: { token: "4f9c2a8e1c7d…", user: user } },
+    "POST /api/logout": { body: { ok: true } },
+    "GET /api/bootstrap": {
+      note: "Abbreviated: real bootstraps include every guild, DM, read state and presence the user can see.",
+      body: {
+        user: user,
+        guilds: [guild],
+        dms: [],
+        relationships: [],
+        reads: [{ channel_id: 12, last_read_id: 9080, mention_count: 0 }],
+        users: [user],
+        presences: { "7": "online" },
+        unread: { "12": 0 },
+        emojis: [],
+        voice_states: []
+      }
+    },
+    "PATCH /api/me": { body: user },
+    "GET /api/users/{id}": { body: user },
+    "GET /api/users/lookup?q=": { body: [user] },
+    "GET /api/users/{id}/mutuals": { body: [guild] },
+    "POST /api/users/batch": { body: [user] },
+    "POST /api/read": { body: { ok: true } },
+    "POST /api/guilds": { body: guild },
+    "GET /api/guilds/{id}": {
+      body: {
+        guild: guild,
+        channels: [channel],
+        roles: [role],
+        overwrites: [],
+        permissions: 1024
+      }
+    },
+    "PATCH /api/guilds/{id}": { body: guild },
+    "DELETE /api/guilds/{id}": { body: { ok: true } },
+    "GET /api/public-guilds": { body: [guild] },
+    "POST /api/public-guilds/{id}/join": { body: guild },
+    "POST /api/guilds/{id}/channels": { body: channel },
+    "GET /api/guilds/{id}/commands": { body: [command] },
+    "POST /api/guilds/{id}/leave": { body: { ok: true } },
+    "POST /api/guilds/{id}/boost": { body: guild },
+    "DELETE /api/guilds/{id}/boost": { body: guild },
+    "GET /api/guilds/{id}/permissions": {
+      body: { permissions: 1024, channels: { "12": 1024, "13": 1024 } }
+    },
+    "GET /api/guilds/{id}/audit-logs": { body: [audit] },
+    "GET /api/guilds/{id}/members": {
+      body: { members: [member], total: 8, next_offset: null, presences: { "7": "online" } }
+    },
+    "GET /api/guilds/{id}/members/{user_id}": { body: member },
+    "PATCH /api/guilds/{id}/members/{user_id}": { body: member },
+    "POST /api/guilds/{id}/members/{user_id}/kick": { body: { ok: true } },
+    "POST /api/guilds/{id}/members/{user_id}/ban": { body: { ok: true } },
+    "POST /api/guilds/{id}/members/{user_id}/timeout": { body: member },
+    "GET /api/guilds/{id}/bans": {
+      body: [{ user: user, reason: "spam", created_at: 1794691200123 }]
+    },
+    "DELETE /api/guilds/{id}/bans/{user_id}": { body: { ok: true } },
+    "POST /api/guilds/{id}/prune/preview": { body: { count: 3 } },
+    "POST /api/guilds/{id}/prune": { body: { pruned: 3 } },
+    "GET /api/inbox": { body: { mentions: [inboxEntry], unreads: [inboxEntry] } },
+    "PATCH /api/channels/{id}": { body: channel },
+    "DELETE /api/channels/{id}": { body: { ok: true } },
+    "GET /api/channels/{id}/permissions": {
+      body: [{ target_id: 3, target_type: "role", allow: 1024, deny: 0 }]
+    },
+    "GET /api/channels/{id}/threads": { body: [channel] },
+    "POST /api/channels/{id}/threads": { body: channel },
+    "POST /api/channels/{id}/typing": { body: { ok: true } },
+    "POST /api/channels/{id}/upload": {
+      body: {
+        attachment: {
+          id: 55,
+          filename: "screenshot.png",
+          size: 184320,
+          content_type: "image/png",
+          url: "/cdn/ab12cd34.png",
+          width: 1920,
+          height: 1080
+        }
+      }
+    },
+    "GET /cdn/{file}": {
+      status: "200 OK",
+      body: "<binary asset, optionally resized with ?w=480>"
+    },
+    "GET /api/channels/{id}/pins": { body: [message] },
+    "GET /api/channels/{id}/webhooks": { body: [webhook] },
+    "POST /api/channels/{id}/webhooks": { body: webhook },
+    "GET /api/guilds/{id}/emojis": {
+      body: [{ id: 4, guild_id: 1, name: "rune", sticker: false, url: "/cdn/rune.png" }]
+    },
+    "GET /api/channels/{id}/messages": { body: [message] },
+    "POST /api/channels/{id}/messages": { body: message },
+    "PATCH /api/messages/{id}": { body: message },
+    "DELETE /api/messages/{id}": { body: { ok: true } },
+    "POST /api/messages/{id}/reactions": { body: message },
+    "POST /api/messages/{id}/pin": { body: message },
+    "GET /api/search": {
+      body: [
+        {
+          message: message,
+          channel_id: 12,
+          channel_name: "general",
+          guild_id: 1,
+          guild_name: "Rune Lounge",
+          author: user
+        }
+      ]
+    },
+    "GET /api/guilds/{id}/roles": { body: [role] },
+    "POST /api/guilds/{id}/roles": { body: role },
+    "PATCH /api/guilds/{id}/roles/{role_id}": { body: role },
+    "DELETE /api/guilds/{id}/roles/{role_id}": { body: { ok: true } },
+    "POST /api/guilds/{id}/invites": { body: invite },
+    "GET /api/invites/{code}": { body: invite },
+    "POST /api/invites/{code}/join": { body: guild },
+    "POST /api/friends/{id}/request": { body: { ok: true } },
+    "POST /api/friends/{id}/accept": { body: { ok: true } },
+    "POST /api/friends/{id}/remove": { body: { ok: true } },
+    "POST /api/friends/{id}/block": { body: { ok: true } },
+    "POST /api/dms/group": { body: dm },
+    "POST /api/dms/{id}": { body: dm },
+    "PATCH /api/dms/{id}": { body: dm },
+    "GET /api/guilds/{id}/events": { body: [event] },
+    "POST /api/guilds/{id}/events": { body: event },
+    "DELETE /api/guilds/{id}/events/{event}": { body: { ok: true } },
+    "GET /api/bots": { body: [bot] },
+    "POST /api/bots": { body: { bot: bot, token: "rcbot.9f2c…" } },
+    "DELETE /api/bots/{id}": { body: { ok: true } },
+    "GET /api/applications": { body: [application] },
+    "POST /api/applications": { body: { application: application, token: "rcbot.9f2c…" } },
+    "DELETE /api/applications/{id}": { body: { ok: true } },
+    "POST /api/applications/{id}/token": { body: { token: "rcbot.9f2c…" } },
+    "GET /api/applications/{id}/commands": { body: [command] },
+    "POST /api/applications/{id}/commands": { body: command },
+    "DELETE /api/applications/{id}/commands/{command}": { body: { ok: true } },
+    "POST /api/interactions": { body: { id: "9001", token: "8b1d…" } },
+    "POST /api/interactions/{id}/{token}/callback": { body: { ok: true } },
+    "DELETE /api/webhooks/{id}": { body: { ok: true } },
+    "POST /api/webhooks/{id}/{token}": { body: message },
+    "POST /api/voice": {
+      body: { user_id: 7, guild_id: 1, channel_id: 3, self_mute: false, self_deaf: false }
+    },
+    "GET /gateway": {
+      status: "101 SWITCHING PROTOCOLS",
+      body: "Upgrade: websocket\nConnection: Upgrade\n\n{\"op\":\"ready\",\"d\":{\"user\":{\"id\":7,...}}}"
+    },
+    "GET /gateway/v1": {
+      status: "101 SWITCHING PROTOCOLS",
+      body: "{\"op\":10,\"d\":{\"heartbeat_interval\":41250}}"
+    },
+    "GET /voice": {
+      status: "101 SWITCHING PROTOCOLS",
+      body: "{\"op\":\"voice_ready\",\"d\":{\"channel_id\":3,\"participants\":[]}}"
+    }
+  };
+})();

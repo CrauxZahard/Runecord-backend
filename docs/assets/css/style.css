@@ -1893,6 +1893,106 @@ td strong {
   line-height: 1.5;
 }
 
+.ep-response {
+  margin: 7px 0 0 63px;
+  border-top: 1px solid var(--line);
+}
+
+.ep-response summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 0 2px;
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  list-style: none;
+  transition: color 0.16s ease;
+}
+
+.ep-response summary::-webkit-details-marker {
+  display: none;
+}
+
+.ep-response summary:hover {
+  color: var(--text);
+}
+
+.ep-response[open] .ep-response-label {
+  color: var(--cyan);
+}
+
+.ep-status {
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  color: var(--faint);
+  font-size: 7.5px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  transition: color 0.16s ease, border-color 0.16s ease;
+}
+
+.ep-response[open] .ep-status {
+  border-color: rgba(74, 222, 128, 0.35);
+  color: var(--green);
+}
+
+.ep-plus {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  margin-left: auto;
+  color: var(--cyan);
+}
+
+.ep-plus::before,
+.ep-plus::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 10px;
+  height: 1px;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+  transition: transform 0.16s ease;
+}
+
+.ep-plus::after {
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+
+.ep-response[open] .ep-plus::after {
+  transform: translate(-50%, -50%) rotate(0deg);
+}
+
+.ep-response-body {
+  padding: 4px 0 5px;
+}
+
+.ep-response-note {
+  margin: 0 0 6px;
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  line-height: 1.55;
+}
+
+.ep-response .code {
+  margin: 0;
+  border-color: var(--line);
+}
+
+.ep-response pre {
+  max-height: 320px;
+  padding: 12px 13px;
+  overflow: auto;
+  font-size: 9.5px;
+  line-height: 1.65;
+}
+
 .api-empty {
   padding: 32px 16px;
   border: 1px dashed var(--line-strong);
@@ -2372,6 +2472,10 @@ td strong {
   }
 
   .ep-desc {
+    margin-left: 0;
+  }
+
+  .ep-response {
     margin-left: 0;
   }
 

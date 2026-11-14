@@ -186,6 +186,54 @@
     return "ep-" + method.toLowerCase() + "-" + clean;
   }
 
+  function highlightJson(text) {
+    var out = "";
+    var last = 0;
+    var pattern = /("(?:\\.|[^"\\])*")|(-?\d+(?:\.\d+)?)|\b(true|false|null)\b/g;
+    var match;
+
+    while ((match = pattern.exec(text))) {
+      out += escapeHtml(text.slice(last, match.index));
+      if (match[1]) out += '<span class="tok-s">' + escapeHtml(match[1]) + "</span>";
+      else if (match[2]) out += '<span class="tok-n">' + match[2] + "</span>";
+      else out += '<span class="tok-b">' + match[3] + "</span>";
+      last = pattern.lastIndex;
+    }
+
+    return out + escapeHtml(text.slice(last));
+  }
+
+  function responseFor(endpoint, group) {
+    var key = endpoint.m + " " + endpoint.p;
+    var explicit = window.RUNECORD_RESPONSES && window.RUNECORD_RESPONSES[key];
+    if (explicit) return explicit;
+
+    if (endpoint.m === "DELETE") {
+      return { body: { ok: true }, note: "The server acknowledges the mutation." };
+    }
+
+    var shapes = {
+      system: { ok: true },
+      users: { id: 7, username: "maya", display_name: "Maya Chen", status: "online" },
+      guilds: { id: 1, name: "Rune Lounge", owner_id: 1, member_count: 8 },
+      members: { members: [], total: 0, next_offset: null, presences: {} },
+      channels: { id: 12, guild_id: 1, name: "general", kind: "text", position: 2 },
+      messages: { id: 9081, channel_id: 12, author_id: 7, content: "shipped it.", timestamp: 1794691200123 },
+      roles: { id: 3, guild_id: 1, name: "Moderator", permissions: 1024, position: 1 },
+      social: { ok: true },
+      events: { id: 4, guild_id: 1, name: "Design review", start_at: 1794777600000 },
+      bots: { id: 42, username: "runebot", is_bot: true },
+      apps: { id: 3, name: "Runebot Tools", scopes: ["bot", "applications.commands"] },
+      webhooks: { id: 7, channel_id: 12, name: "CI" },
+      gateway: { ok: true }
+    };
+
+    return {
+      body: shapes[group.id] || { ok: true },
+      note: "Representative shape for this resource; exact fields depend on the request."
+    };
+  }
+
   var apiRoot = document.getElementById("api-groups");
   var apiCount = null;
   var apiFilter = null;
@@ -204,6 +252,10 @@
         '<p class="api-group-blurb">' + group.blurb + "</p>";
       group.endpoints.forEach(function (endpoint) {
         var id = slugFor(endpoint.m, endpoint.p);
+        var response = responseFor(endpoint, group);
+        var responseBody = typeof response.body === "string" ? response.body : JSON.stringify(response.body, null, 2);
+        var responseMarkup = typeof response.body === "string" ? escapeHtml(responseBody) : highlightJson(responseBody);
+        var responseStatus = response.status || "200 OK";
         total += 1;
         html +=
           '<div class="endpoint" id="' + id + '" data-search="' +
@@ -216,7 +268,15 @@
           '<button class="ep-copy" type="button" data-copy="' + endpoint.p + '" aria-label="Copy ' + endpoint.p + '">' +
           '<svg class="icon" aria-hidden="true"><use href="assets/img/icons.svg#i-copy"></use></svg>' +
           "</button></div>" +
-          '<p class="ep-desc">' + endpoint.d + "</p></div>";
+          '<p class="ep-desc">' + endpoint.d + "</p>" +
+          '<details class="ep-response">' +
+          '<summary><span class="ep-response-label">RESPONSE EXAMPLE</span>' +
+          '<span class="ep-status">' + responseStatus + "</span>" +
+          '<span class="ep-plus" aria-hidden="true"></span></summary>' +
+          '<div class="ep-response-body">' +
+          (response.note ? '<p class="ep-response-note">' + response.note + "</p>" : "") +
+          '<div class="code no-top"><pre><code>' + responseMarkup + "</code></pre></div>" +
+          "</div></details></div>";
       });
       html += "</section>";
     });
